@@ -81,14 +81,23 @@ function normalizeRepoPath(input) {
 
 async function runGit(args) {
     const token = process.env.CONTENT_VIEWER_GITHUB_TOKEN;
-    const gitArgs = token ? ["-c", `http.extraHeader=Authorization: Bearer ${token}`, ...args] : args;
-    const { stdout, stderr } = await execFileAsync("git", gitArgs, {
-        windowsHide: true,
-        timeout: 120000,
-        maxBuffer: 2 * 1024 * 1024,
-        env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
-    });
-    return `${stdout}${stderr}`.trim();
+    const authHeader = token
+        ? Buffer.from(`x-access-token:${token}`, "utf8").toString("base64")
+        : "";
+    const gitArgs = token ? ["-c", `http.https://github.com/.extraheader=AUTHORIZATION: basic ${authHeader}`, ...args] : args;
+    try {
+        const { stdout, stderr } = await execFileAsync("git", gitArgs, {
+            windowsHide: true,
+            timeout: 120000,
+            maxBuffer: 2 * 1024 * 1024,
+            env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+        });
+        return `${stdout}${stderr}`.trim();
+    } catch (error) {
+        const output = `${error.stdout ?? ""}${error.stderr ?? ""}`.trim();
+        const command = ["git", ...args].join(" ");
+        throw new Error(output ? `${command} failed:\n${output}` : `${command} failed`);
+    }
 }
 
 async function ensureDisposableClone(repoPath) {
