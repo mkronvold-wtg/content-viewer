@@ -1,0 +1,27 @@
+services:
+  content-viewer:
+    build:
+      context: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8080
+      CONTENT_VIEWER_REPO_PATH: /app/content
+    expose:
+      - "8080"
+    volumes:
+      - content-viewer-content:/app/content
+    networks:
+      npm-proxy:
+        aliases:
+          - content-viewer
+
+volumes:
+  content-viewer-content:
+
+networks:
+  npm-proxy:
+    external: true
+    name: npm-proxy
