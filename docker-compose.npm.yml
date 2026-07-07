@@ -14,6 +14,7 @@ services:
     volumes:
       - content-viewer-content:/app/content
     networks:
+      content-viewer-egress:
       npm-proxy:
         aliases:
           - content-viewer
@@ -22,6 +23,7 @@ volumes:
   content-viewer-content:
 
 networks:
+  content-viewer-egress:
   npm-proxy:
     external: true
     name: npm-proxy
