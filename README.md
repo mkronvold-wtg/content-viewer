@@ -1,39 +1,113 @@
 # Content Viewer
 
-Session-scoped Copilot canvas extension for searching and presenting Markdown content from a local or disposable Git clone.
+Markdown content viewer for browsing, searching, and presenting documents from a Git-backed content repository.
 
-## Current state
+This repository includes:
 
-- Provides a Copilot canvas extension in `extension.mjs`.
-- Indexes Markdown files from `CONTENT_VIEWER_REPO_PATH` or a canvas `repoPath` input.
-- Can clone/pull content when `CONTENT_VIEWER_REPO_URL` is set.
-- Renders common Markdown features, local assets, SVGs, Mermaid diagrams, tables, presentation mode, and tag search.
+- `server.mjs` - standalone Node HTTP server for Docker.
+- `extension.mjs` - Copilot canvas extension source kept for side-panel usage.
+- `Dockerfile` and `docker-compose.yml` - first container deployment target.
+
+## Features
+
+- Markdown search across title, path, body, and frontmatter tags.
+- `tag:KT`-style frontmatter tag filtering.
+- Local image/SVG asset resolution.
+- Mermaid rendering.
+- Tables, task lists, nested lists, blockquotes, code blocks, admonitions, links, bold, italic, and strikethrough.
+- Presentation mode with heading or `---` pagination.
+- On-demand refresh that runs `git pull --ff-only` and rebuilds the index.
+
+## Docker Compose quick start
+
+1. Copy the example environment file:
+
+   ```sh
+   cp .env.example .env
+   ```
+
+2. Edit `.env`:
+
+   ```env
+   CONTENT_VIEWER_REPO_URL=https://github.com/OWNER/CONTENT_REPO.git
+   CONTENT_VIEWER_REPO_BRANCH=main
+   CONTENT_VIEWER_GITHUB_TOKEN=...
+   ```
+
+3. Start it:
+
+   ```sh
+   docker compose up -d --build
+   ```
+
+4. Open:
+
+   ```text
+   http://127.0.0.1:8080/
+   ```
+
+The compose file binds to `127.0.0.1:8080` by default so it is not exposed on every network interface. Put a VPN, SSH tunnel, or reverse proxy in front of it if other users need access.
 
 ## Configuration
 
-| Variable | Purpose |
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `PORT` | No | HTTP port inside the container. Defaults to `8080`. |
+| `HOST` | No | Bind address inside the container. Defaults to `0.0.0.0`. |
+| `CONTENT_VIEWER_REPO_PATH` | No | Local path to the content clone. Defaults to `/app/content` in Docker. |
+| `CONTENT_VIEWER_REPO_URL` | Yes for clone mode | Git URL for the Markdown content repo. |
+| `CONTENT_VIEWER_REPO_BRANCH` | No | Branch to clone. Defaults to `main`. |
+| `CONTENT_VIEWER_GITHUB_TOKEN` | Yes for private GitHub repos | Token used by `git clone` and `git pull`. |
+| `CONTENT_VIEWER_REFRESH_INTERVAL_SECONDS` | No | Optional scheduled pull/index refresh interval. |
+
+## Authentication and access requirements
+
+The first container version intentionally has **no application-level user authentication**. It assumes access is controlled by network placement.
+
+Required controls:
+
+1. Run it on a private host, private subnet, VPN-only network, or behind an authenticated reverse proxy.
+2. Do not publish the container port directly to the public internet.
+3. Store `CONTENT_VIEWER_GITHUB_TOKEN` as a Docker/Compose secret or protected environment variable, not in source control.
+4. Use a read-only GitHub token:
+   - Fine-grained PAT: grant **Contents: read** on the content repository only.
+   - Classic PAT, if required by policy: use the minimum repo read permission available for private repo cloning.
+5. Rotate the token regularly and revoke it if the host is replaced or compromised.
+6. Keep the content clone volume private because it contains a working copy of the content repository.
+
+If public or broad internal access is needed later, add auth before widening the bind address. Suitable options are:
+
+- Reverse proxy SSO/OIDC in front of the app.
+- GitHub OAuth with org/team allow-list.
+- Basic auth at a reverse proxy for a small trusted group.
+
+## Container architecture
+
+Current single-container design:
+
+1. Node server serves the UI and JSON APIs.
+2. The same container owns the content clone under `/app/content`.
+3. Refresh requests run `git pull --ff-only`, rebuild the in-memory index, and keep serving.
+4. Mermaid assets are served from installed `node_modules`.
+
+Separate containers are not required initially. Split later only if you want a dedicated git-sync sidecar, external auth proxy, or shared persistent content volume across replicas.
+
+## API endpoints
+
+| Endpoint | Purpose |
 | --- | --- |
-| `CONTENT_VIEWER_REPO_PATH` | Local path to the disposable content clone. Defaults to `./content`. |
-| `CONTENT_VIEWER_REPO_URL` | Git URL to clone when the local content path is missing. |
-| `CONTENT_VIEWER_REPO_BRANCH` | Branch to clone. Defaults to `main`. |
-| `CONTENT_VIEWER_PRIMARY_REPO_PATH` | Optional primary checkout path to redirect away from for safer refreshes. |
+| `GET /` | Web UI. |
+| `GET /api/health` | Health/readiness details. |
+| `GET /api/search?q=...` | Search indexed Markdown. |
+| `GET /api/doc?path=...` | Fetch one document. |
+| `POST /api/refresh` | Pull latest content and rebuild index. |
+| `GET /asset?doc=...&src=...` | Resolve local document assets. |
 
-## Outline: standalone Docker container
+## Next hardening steps
 
-1. Extract the HTTP server and Markdown renderer from the Copilot extension wrapper.
-2. Replace `joinSession` and `createCanvas` with a normal Node entry point, for example `server.mjs`.
-3. Split the monolithic file into modules: indexer, search query parser, asset resolver, Markdown renderer, git refresh service, and web UI.
-4. Add an HTTP framework or keep `node:http`, then expose a fixed configurable port such as `8080`.
-5. Replace canvas open input with environment variables and/or a small config file.
-6. Serve the same HTML UI at `/`, JSON APIs at `/api/search`, `/api/doc`, `/api/refresh`, assets at `/asset`, and Mermaid vendor files under `/vendor`.
-7. Add authentication if the container will be reachable outside localhost.
-8. Decide how content is provided: mounted volume, init-time clone from `CONTENT_VIEWER_REPO_URL`, or sidecar/scheduled pull.
-9. Add a `Dockerfile` using a slim Node image, install production dependencies, copy app files, expose the configured port, and run `node server.mjs`.
-10. Add a `docker-compose.yml` example with a content volume and environment variables.
-11. Add health/readiness endpoints and logging suitable for container platforms.
-12. Add tests for Markdown rendering, search/tag filtering, asset resolution, and git refresh behavior.
-13. Add CI to run tests, build the image, and optionally publish it to GHCR.
-
-## First container milestone
-
-Create a minimal standalone `server.mjs` that serves the current UI from a local content volume without Copilot canvas integration. After that works, add git clone/pull, Docker packaging, auth, and CI.
+1. Add tests for Markdown rendering, search/tag filtering, asset resolution, and git refresh behavior.
+2. Move the browser renderer out of the template string into static files.
+3. Add structured logging and request IDs.
+4. Add optional reverse-proxy auth examples.
+5. Add GHCR publishing workflow.
+6. Add Kubernetes manifests if Docker Compose is no longer enough.

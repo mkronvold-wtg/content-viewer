@@ -2,9 +2,8 @@ import { createServer } from "node:http";
 import { execFile } from "node:child_process";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { fileURLToPath, URL } from "node:url";
+import { fileURLToPath, pathToFileURL, URL } from "node:url";
 import { promisify } from "node:util";
-import { joinSession, createCanvas, CanvasError } from "@github/copilot-sdk/extension";
 
 const execFileAsync = promisify(execFile);
 const EXTENSION_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -2303,99 +2302,80 @@ async function startServer(instanceId, repoPath) {
     };
 }
 
-const session = await joinSession({
-    canvases: [
-        createCanvas({
-            id: "kpe-doc-dashboard",
-            displayName: "KPE document dashboard",
-            description: "Search and view markdown documents from the local KPE content repository.",
-            inputSchema: {
-                type: "object",
-                properties: {
-                    repoPath: {
-                        type: "string",
-                        description: "Absolute path to the repository containing markdown documents.",
-                    },
-                },
-                additionalProperties: false,
-            },
-            actions: [
-                {
-                    name: "refresh_index",
-                    description: "Pull the disposable clone and rebuild the markdown document index for this dashboard.",
-                    handler: async (ctx) => {
-                        const entry = servers.get(ctx.instanceId);
-                        if (!entry) {
-                            throw new CanvasError("dashboard_not_open", "Open the dashboard before refreshing its index.");
-                        }
+function parsePort(value) {
+    const port = Number(value ?? 8080);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+        throw new Error(`Invalid PORT: ${value}`);
+    }
+    return port;
+}
 
-                        const git = await updateDisposableClone(entry.state.repoPath);
-                        entry.state.index = null;
-                        entry.state.indexPromise = null;
-                        const index = await ensureIndex(entry.state);
-                        return {
-                            total: index.docs.length,
-                            indexedAt: index.indexedAt,
-                            repoPath: index.repoPath,
-                            git,
-                        };
-                    },
-                },
-                {
-                    name: "search_documents",
-                    description: "Search indexed markdown documents and return matching titles, paths, and snippets.",
-                    inputSchema: {
-                        type: "object",
-                        properties: {
-                            query: { type: "string" },
-                            limit: { type: "number", minimum: 1, maximum: 100 },
-                        },
-                        additionalProperties: false,
-                    },
-                    handler: async (ctx) => {
-                        const entry = servers.get(ctx.instanceId);
-                        if (!entry) {
-                            throw new CanvasError("dashboard_not_open", "Open the dashboard before searching documents.");
-                        }
+function parseRefreshIntervalMs(value) {
+    if (!value) {
+        return 0;
+    }
+    const seconds = Number(value);
+    if (!Number.isFinite(seconds) || seconds <= 0) {
+        throw new Error(`Invalid CONTENT_VIEWER_REFRESH_INTERVAL_SECONDS: ${value}`);
+    }
+    return seconds * 1000;
+}
 
-                        const index = await ensureIndex(entry.state);
-                        const input = ctx.input && typeof ctx.input === "object" ? ctx.input : {};
-                        const results = searchIndex(index, typeof input.query === "string" ? input.query : "", input.limit ?? 20);
-                        return {
-                            total: index.docs.length,
-                            count: results.length,
-                            results,
-                        };
-                    },
-                },
-            ],
-            open: async (ctx) => {
-                const repoPath = normalizeRepoPath(ctx.input);
-                let entry = servers.get(ctx.instanceId);
-                if (!entry || entry.state.repoPath !== repoPath) {
-                    if (entry) {
-                        await new Promise((resolve) => entry.server.close(() => resolve()));
-                    }
+async function refreshContent(state) {
+    const git = await updateDisposableClone(state.repoPath);
+    state.index = null;
+    state.indexPromise = null;
+    const index = await ensureIndex(state);
+    return { git, total: index.docs.length, indexedAt: index.indexedAt };
+}
 
-                    entry = await startServer(ctx.instanceId, repoPath);
-                    servers.set(ctx.instanceId, entry);
-                }
+async function startStandaloneServer() {
+    const repoPath = path.resolve(process.env.CONTENT_VIEWER_REPO_PATH ?? DEFAULT_REPO_PATH);
+    const host = process.env.HOST ?? "0.0.0.0";
+    const port = parsePort(process.env.PORT);
+    const refreshIntervalMs = parseRefreshIntervalMs(process.env.CONTENT_VIEWER_REFRESH_INTERVAL_SECONDS);
+    const state = {
+        instanceId: "standalone",
+        repoPath,
+        index: null,
+        indexPromise: null,
+        error: null,
+    };
 
-                return {
-                    title: "KPE document dashboard",
-                    status: `Searching ${repoPath}`,
-                    url: entry.url,
-                };
-            },
-            onClose: async (ctx) => {
-                const entry = servers.get(ctx.instanceId);
-                if (entry) {
-                    servers.delete(ctx.instanceId);
-                    await new Promise((resolve) => entry.server.close(() => resolve()));
-                }
-            },
-        }),
-    ],
-});
+    const server = createServer((req, res) => {
+        void handleRequest(state, req, res);
+    });
 
-void session;
+    await new Promise((resolve) => server.listen(port, host, resolve));
+    console.log(`content-viewer listening on http://${host}:${port}`);
+    console.log(`serving markdown from ${repoPath}`);
+
+    void ensureIndex(state).then((index) => {
+        console.log(`indexed ${index.docs.length} markdown files`);
+    }).catch((error) => {
+        console.error(error instanceof Error ? error.message : String(error));
+    });
+
+    if (refreshIntervalMs) {
+        setInterval(() => {
+            void refreshContent(state).then((result) => {
+                console.log(`refreshed index: ${result.total} markdown files`);
+            }).catch((error) => {
+                console.error(error instanceof Error ? error.message : String(error));
+            });
+        }, refreshIntervalMs).unref();
+    }
+
+    const shutdown = () => {
+        server.close(() => process.exit(0));
+    };
+    process.on("SIGINT", shutdown);
+    process.on("SIGTERM", shutdown);
+}
+
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+    startStandaloneServer().catch((error) => {
+        console.error(error instanceof Error ? error.stack || error.message : String(error));
+        process.exitCode = 1;
+    });
+}
