@@ -39,6 +39,7 @@ Safety rules:
 5. Before changing an app, check its current Docker Compose state and working tree.
 6. Before assigning a seasonal hostname, read and update `~/src/npm/temporary-dns-hostnames.md`.
 7. If a hostname is already in use, do not reuse it without explicit approval.
+8. Do not create only a raw `/data/nginx/proxy_host/*.conf` file for a new route. That can make Nginx serve the route, but it will not appear in the NPM dashboard. A real NPM proxy host needs both the NPM database record and the generated runtime config, or it should be created through the NPM UI/API.
 
 Discovery commands:
 
@@ -94,12 +95,129 @@ done
 '
 ```
 
+Inspect NPM dashboard database records:
+
+```sh
+cat <<'SQL' | docker exec -i npm-npm-db-1 sh -lc 'mariadb -u"$MARIADB_USER" -p"$MARIADB_PASSWORD" "$MARIADB_DATABASE"'
+SELECT
+  id,
+  domain_names,
+  forward_scheme,
+  forward_host,
+  forward_port,
+  certificate_id,
+  ssl_forced,
+  http2_support,
+  block_exploits,
+  enabled
+FROM proxy_host
+WHERE is_deleted = 0
+ORDER BY id;
+SQL
+```
+
+NPM route state has two important layers:
+1. Dashboard/database layer: rows in the MariaDB `proxy_host` table. The NPM dashboard reads this layer.
+2. Runtime/Nginx layer: generated files in `/data/nginx/proxy_host/<id>.conf` inside `npm-npm-1`. OpenResty/Nginx serves this layer.
+
+If a route exists only as `/data/nginx/proxy_host/<id>.conf`, it may work externally but will not appear in the NPM dashboard. If a route exists only in the database and Nginx has not generated/reloaded its config, it may appear in the dashboard but not serve traffic.
+
+Preferred route creation method:
+1. Use the NPM dashboard at `https://npmadmin.dev.e2open.com`.
+2. Add a Proxy Host with the selected hostname, forward target, wildcard cert, Force SSL, HTTP/2, and Block Common Exploits.
+3. Let NPM create the database row and generated Nginx config.
+4. Verify both the dashboard row and `/data/nginx/proxy_host/<id>.conf` exist.
+
+If manual recovery or automation is required, create both layers deliberately and keep the IDs aligned:
+1. Insert or update the `proxy_host` database row so the NPM dashboard can list and edit the route.
+2. Create or update `/data/nginx/proxy_host/<id>.conf` so Nginx can serve the route immediately.
+3. Run `nginx -t` and reload Nginx inside `npm-npm-1`.
+4. Verify the dashboard row, runtime config, and external URL.
+
+Manual database insert pattern using an existing proxy host as a template:
+
+```sh
+NEW_ID=8
+NEXT_ID=$((NEW_ID + 1))
+DOMAIN='winter.dev.e2open.com'
+FORWARD_HOST='content-viewer'
+FORWARD_PORT=8080
+TEMPLATE_ID=7
+
+cat <<SQL | docker exec -i npm-npm-db-1 sh -lc 'mariadb -u"$MARIADB_USER" -p"$MARIADB_PASSWORD" "$MARIADB_DATABASE"'
+INSERT INTO proxy_host (
+  id, created_on, modified_on, owner_user_id, is_deleted, domain_names,
+  forward_host, forward_port, access_list_id, certificate_id, ssl_forced,
+  caching_enabled, block_exploits, advanced_config, meta,
+  allow_websocket_upgrade, http2_support, forward_scheme, enabled, locations,
+  hsts_enabled, hsts_subdomains, trust_forwarded_proto
+)
+SELECT
+  ${NEW_ID}, NOW(), NOW(), owner_user_id, 0, '["${DOMAIN}"]',
+  '${FORWARD_HOST}', ${FORWARD_PORT}, access_list_id, certificate_id, ssl_forced,
+  caching_enabled, block_exploits, advanced_config, '{"nginx_online":true,"nginx_err":null}',
+  allow_websocket_upgrade, http2_support, forward_scheme, enabled, locations,
+  hsts_enabled, hsts_subdomains, trust_forwarded_proto
+FROM proxy_host
+WHERE id = ${TEMPLATE_ID}
+  AND NOT EXISTS (SELECT 1 FROM proxy_host WHERE id = ${NEW_ID});
+
+ALTER TABLE proxy_host AUTO_INCREMENT = ${NEXT_ID};
+
+SELECT id, domain_names, forward_scheme, forward_host, forward_port, certificate_id, ssl_forced, http2_support, block_exploits, enabled
+FROM proxy_host
+WHERE id = ${NEW_ID};
+SQL
+```
+
+Manual runtime config pattern using an existing generated proxy host as a template:
+
+```sh
+NEW_ID=8
+DOMAIN='winter.dev.e2open.com'
+FORWARD_HOST='content-viewer'
+FORWARD_PORT=8080
+TEMPLATE_ID=7
+TEMPLATE_DOMAIN='summer.dev.e2open.com'
+TEMPLATE_FORWARD_HOST='whiplash-web'
+TEMPLATE_FORWARD_PORT=4173
+
+docker exec npm-npm-1 sh -lc "
+cp /data/nginx/proxy_host/${TEMPLATE_ID}.conf /data/nginx/proxy_host/${NEW_ID}.conf &&
+sed -i \
+  -e 's/${TEMPLATE_DOMAIN}/${DOMAIN}/g' \
+  -e 's/${TEMPLATE_FORWARD_HOST}/${FORWARD_HOST}/g' \
+  -e 's/${TEMPLATE_FORWARD_PORT}/${FORWARD_PORT}/g' \
+  -e 's/proxy-host-${TEMPLATE_ID}_/proxy-host-${NEW_ID}_/g' \
+  /data/nginx/proxy_host/${NEW_ID}.conf &&
+nginx -t &&
+nginx -s reload
+"
+```
+
+Manual verification for both layers:
+
+```sh
+cat <<'SQL' | docker exec -i npm-npm-db-1 sh -lc 'mariadb -u"$MARIADB_USER" -p"$MARIADB_PASSWORD" "$MARIADB_DATABASE"'
+SELECT id, domain_names, forward_scheme, forward_host, forward_port, enabled
+FROM proxy_host
+WHERE domain_names LIKE '%winter.dev.e2open.com%';
+SQL
+
+docker exec npm-npm-1 sh -lc '
+grep -n "winter.dev.e2open.com\|content-viewer\|set \$port" /data/nginx/proxy_host/8.conf
+'
+
+curl -kfsS https://winter.dev.e2open.com/api/health
+```
+
 Observed NPM host pattern:
 - `infohub.dev.e2open.com` forwards to `http://infohub:3000`.
 - `sv4dhoap15.dev.e2open.com` forwards to `http://infohub:3000`.
 - `npmadmin.dev.e2open.com` forwards to NPM admin on `127.0.0.1:81`.
 - `npmstats.dev.e2open.com` forwards to `http://grafana:3000`.
 - `summer.dev.e2open.com` forwards to `http://whiplash-web:4173`.
+- `winter.dev.e2open.com` forwards to `http://content-viewer:8080`.
 - Proxy hosts usually use the wildcard `*.dev.e2open.com` certificate and force SSL.
 
 Compose pattern for an app exposed by NPM:
@@ -204,7 +322,7 @@ Deployment flow:
      -fsS http://<service-alias>:<container-port>/
    ```
 10. Choose an available seasonal hostname from `~/src/npm/temporary-dns-hostnames.md`.
-11. Create or update an NPM proxy host:
+11. Create or update an NPM proxy host through the NPM dashboard whenever possible:
     - Domain Names: selected hostname, for example `winter.dev.e2open.com`.
     - Scheme: `http`.
     - Forward Hostname/IP: Docker service alias on `npm-proxy`, for example `content-viewer`.
@@ -214,17 +332,18 @@ Deployment flow:
     - SSL Certificate: wildcard `*.dev.e2open.com` certificate.
     - Force SSL: enable.
     - HTTP/2 Support: enable.
-12. Update `~/src/npm/temporary-dns-hostnames.md` with the assignment:
+12. If not using the dashboard, create both the `proxy_host` database row and matching `/data/nginx/proxy_host/<id>.conf` runtime file as described above. Do not leave a route in runtime config only.
+13. Update `~/src/npm/temporary-dns-hostnames.md` with the assignment:
     - Hostname.
     - Status.
     - Current target, such as `content-viewer:8080`.
     - App name and owner/purpose.
-13. Verify externally:
+14. Verify externally:
     ```sh
     curl -kI https://<hostname>/
     curl -kfsS https://<hostname>/api/health
     ```
-14. Check NPM logs if routing fails:
+15. Check NPM logs if routing fails:
     ```sh
     docker logs npm-npm-1 --tail=100
     docker exec npm-npm-1 sh -lc 'ls -l /data/logs && tail -100 /data/logs/proxy-host-*_error.log'
@@ -249,4 +368,3 @@ When finished, report:
 - Whether `~/src/npm/temporary-dns-hostnames.md` was updated.
 - Any manual NPM UI step still required.
 ````
-
