@@ -513,22 +513,22 @@ function renderHtml(state) {
   <style>
     :root {
       color-scheme: light dark;
-      --dashboard-bg: #e5e7eb;
+      --dashboard-bg: #dadbdf;
       --dashboard-text: var(--text-color-default, #1f2328);
       --dashboard-muted: var(--text-color-muted, #57606a);
-      --dashboard-border: var(--border-color-default, #d0d7de);
-      --dashboard-border-muted: #d8dee4;
-      --dashboard-hr: #8c959f;
-      --dashboard-surface: #f6f8fa;
-      --dashboard-input-bg: #ffffff;
-      --dashboard-button-bg: #f6f8fa;
-      --dashboard-button-hover-bg: #eef2f6;
+      --dashboard-border: var(--border-color-default, #c6ccd3);
+      --dashboard-border-muted: #cdd3d9;
+      --dashboard-hr: #858e97;
+      --dashboard-surface: #eaecee;
+      --dashboard-input-bg: #f2f2f2;
+      --dashboard-button-bg: #eaecee;
+      --dashboard-button-hover-bg: #e2e6ea;
       --dashboard-hover-bg: rgba(9, 105, 218, 0.08);
-      --dashboard-active-bg: #ddf4ff;
+      --dashboard-active-bg: #d2e8f2;
       --dashboard-active-border: #0969da;
-      --dashboard-code-bg: #f6f8fa;
-      --dashboard-code-border: #d0d7de;
-      --dashboard-mark-bg: #fff8c5;
+      --dashboard-code-bg: #eaecee;
+      --dashboard-code-border: #c6ccd3;
+      --dashboard-mark-bg: #f2ecbb;
       --dashboard-mark-text: #24292f;
       --dashboard-link: #0969da;
     }
@@ -583,22 +583,22 @@ function renderHtml(state) {
     :root[data-dashboard-theme="light"],
     body[data-dashboard-theme="light"] {
       color-scheme: light;
-      --dashboard-bg: #e5e7eb;
+      --dashboard-bg: #dadbdf;
       --dashboard-text: #1f2328;
       --dashboard-muted: #57606a;
-      --dashboard-border: #d0d7de;
-      --dashboard-border-muted: #d8dee4;
-      --dashboard-hr: #8c959f;
-      --dashboard-surface: #f6f8fa;
-      --dashboard-input-bg: #ffffff;
-      --dashboard-button-bg: #f6f8fa;
-      --dashboard-button-hover-bg: #eef2f6;
+      --dashboard-border: #c6ccd3;
+      --dashboard-border-muted: #cdd3d9;
+      --dashboard-hr: #858e97;
+      --dashboard-surface: #eaecee;
+      --dashboard-input-bg: #f2f2f2;
+      --dashboard-button-bg: #eaecee;
+      --dashboard-button-hover-bg: #e2e6ea;
       --dashboard-hover-bg: rgba(9, 105, 218, 0.08);
-      --dashboard-active-bg: #ddf4ff;
+      --dashboard-active-bg: #d2e8f2;
       --dashboard-active-border: #0969da;
-      --dashboard-code-bg: #f6f8fa;
-      --dashboard-code-border: #d0d7de;
-      --dashboard-mark-bg: #fff8c5;
+      --dashboard-code-bg: #eaecee;
+      --dashboard-code-border: #c6ccd3;
+      --dashboard-mark-bg: #f2ecbb;
       --dashboard-mark-text: #24292f;
       --dashboard-link: #0969da;
     }
