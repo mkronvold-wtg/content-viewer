@@ -333,13 +333,18 @@ body.presenting .document-shell {
 body.presenting .document-viewer {
   max-height: none;
   min-height: 100vh;
-  padding: 44px clamp(24px, 7vw, 96px) 64px;
+  padding: 8px clamp(24px, 7vw, 96px) 64px;
 }
 
 body.presenting .markdown,
 body.presenting .rendered-document {
   max-width: 1100px;
   margin: 0 auto;
+}
+
+body.presenting .markdown > :first-child,
+body.presenting .rendered-document > :first-child {
+  margin-top: 0;
 }
 
 body.presenting .present-controls select,
