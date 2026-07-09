@@ -46,6 +46,8 @@ Functional requirements:
     - Center the rendered slide content.
     - Use generous side padding, e.g. `clamp(24px, 7vw, 96px)`.
     - Limit readable width, e.g. `max-width: 1100px`.
+    - Keep top padding tight, e.g. `8px`, so the primary heading or title starts in the same vertical band as the overlay controls.
+    - Remove the top margin from the first rendered Markdown block while presenting.
 15. Make the controls subtle but discoverable:
     - Fixed position in the top-right corner.
     - Low opacity by default.
@@ -355,6 +357,8 @@ body.presenting .present-controls .page-controls {
 
 Rename the CSS selectors to match the target app. Do not rely on the exact class names above unless they already exist.
 
+The presentation top spacing is intentionally small. Avoid large top padding such as `44px` unless the app has a fixed header that remains visible in presentation mode. The expected visual result is that the slide's primary heading/title appears inline with the top-right overlay controls, not below them.
+
 Validation requirements:
 1. Open a normal document and confirm reading mode still shows the full document.
 2. Enter presentation mode and confirm search/results/toolbars are hidden.
@@ -366,6 +370,7 @@ Validation requirements:
 8. Confirm opening another document resets to slide 1.
 9. Confirm existing Markdown features still render on slides, especially images, tables, relative links, code blocks, and diagrams.
 10. Confirm light and dark themes keep controls and slide text readable.
+11. Confirm the first slide heading/title is vertically aligned with the overlay controls and there is no large empty band above the slide content.
 
 Do not add a separate presentation file format. Reuse the existing Markdown/document renderer and keep presentation mode as a view state over the current document.
 ````
