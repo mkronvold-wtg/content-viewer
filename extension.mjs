@@ -535,21 +535,21 @@ function renderHtml(state) {
 
     @media (prefers-color-scheme: dark) {
       :root:not([data-color-mode="light"]) {
-        --dashboard-bg: #31353a;
+        --dashboard-bg: #2f3237;
         --dashboard-text: var(--text-color-default, #e6edf3);
         --dashboard-muted: var(--text-color-muted, #8b949e);
-        --dashboard-border: #4f545a;
-        --dashboard-border-muted: #42474d;
-        --dashboard-hr: #848b94;
-        --dashboard-surface: #393d43;
-        --dashboard-input-bg: #393d43;
-        --dashboard-button-bg: #42474d;
-        --dashboard-button-hover-bg: #4f545a;
+        --dashboard-border: #4b5056;
+        --dashboard-border-muted: #3f4349;
+        --dashboard-hr: #7d848d;
+        --dashboard-surface: #363a40;
+        --dashboard-input-bg: #363a40;
+        --dashboard-button-bg: #3f4349;
+        --dashboard-button-hover-bg: #4b5056;
         --dashboard-hover-bg: rgba(56, 139, 253, 0.14);
         --dashboard-active-bg: rgba(56, 139, 253, 0.22);
         --dashboard-active-border: #58a6ff;
-        --dashboard-code-bg: #393d43;
-        --dashboard-code-border: #4f545a;
+        --dashboard-code-bg: #363a40;
+        --dashboard-code-border: #4b5056;
         --dashboard-mark-bg: rgba(187, 128, 9, 0.38);
         --dashboard-mark-text: #ffd33d;
         --dashboard-link: #58a6ff;
@@ -560,21 +560,21 @@ function renderHtml(state) {
     :root[data-visual-mode="dark"],
     body[data-color-mode="dark"],
     body[data-visual-mode="dark"] {
-      --dashboard-bg: #31353a;
+      --dashboard-bg: #2f3237;
       --dashboard-text: var(--text-color-default, #e6edf3);
       --dashboard-muted: var(--text-color-muted, #8b949e);
-      --dashboard-border: #4f545a;
-      --dashboard-border-muted: #42474d;
-      --dashboard-hr: #848b94;
-      --dashboard-surface: #393d43;
-      --dashboard-input-bg: #393d43;
-      --dashboard-button-bg: #42474d;
-      --dashboard-button-hover-bg: #4f545a;
+      --dashboard-border: #4b5056;
+      --dashboard-border-muted: #3f4349;
+      --dashboard-hr: #7d848d;
+      --dashboard-surface: #363a40;
+      --dashboard-input-bg: #363a40;
+      --dashboard-button-bg: #3f4349;
+      --dashboard-button-hover-bg: #4b5056;
       --dashboard-hover-bg: rgba(56, 139, 253, 0.14);
       --dashboard-active-bg: rgba(56, 139, 253, 0.22);
       --dashboard-active-border: #58a6ff;
-      --dashboard-code-bg: #393d43;
-      --dashboard-code-border: #4f545a;
+      --dashboard-code-bg: #363a40;
+      --dashboard-code-border: #4b5056;
       --dashboard-mark-bg: rgba(187, 128, 9, 0.38);
       --dashboard-mark-text: #ffd33d;
       --dashboard-link: #58a6ff;
@@ -606,21 +606,21 @@ function renderHtml(state) {
     :root[data-dashboard-theme="dark"],
     body[data-dashboard-theme="dark"] {
       color-scheme: dark;
-      --dashboard-bg: #31353a;
+      --dashboard-bg: #2f3237;
       --dashboard-text: #e6edf3;
       --dashboard-muted: #8b949e;
-      --dashboard-border: #4f545a;
-      --dashboard-border-muted: #42474d;
-      --dashboard-hr: #848b94;
-      --dashboard-surface: #393d43;
-      --dashboard-input-bg: #393d43;
-      --dashboard-button-bg: #42474d;
-      --dashboard-button-hover-bg: #4f545a;
+      --dashboard-border: #4b5056;
+      --dashboard-border-muted: #3f4349;
+      --dashboard-hr: #7d848d;
+      --dashboard-surface: #363a40;
+      --dashboard-input-bg: #363a40;
+      --dashboard-button-bg: #3f4349;
+      --dashboard-button-hover-bg: #4b5056;
       --dashboard-hover-bg: rgba(56, 139, 253, 0.14);
       --dashboard-active-bg: rgba(56, 139, 253, 0.22);
       --dashboard-active-border: #58a6ff;
-      --dashboard-code-bg: #393d43;
-      --dashboard-code-border: #4f545a;
+      --dashboard-code-bg: #363a40;
+      --dashboard-code-border: #4b5056;
       --dashboard-mark-bg: rgba(187, 128, 9, 0.38);
       --dashboard-mark-text: #ffd33d;
       --dashboard-link: #58a6ff;
