@@ -1324,8 +1324,12 @@ function renderHtml(appState, initialView = {}) {
     let currentDocument = null;
     let currentPages = [{ title: "Document", content: "" }];
     let currentPageIndex = 0;
+    let wheelPageDelta = 0;
+    let lastWheelPageTurn = 0;
     let mermaidModulePromise = null;
     const themeStorageKey = "kpe-doc-dashboard-theme";
+    const wheelPageThreshold = 90;
+    const wheelPageCooldownMs = 650;
 
     function escapeHtml(value) {
       return String(value)
@@ -2211,6 +2215,17 @@ function renderHtml(appState, initialView = {}) {
       nextPage.disabled = currentPageIndex >= currentPages.length - 1;
     }
 
+    async function changePresentationPage(direction) {
+      const nextIndex = Math.min(currentPages.length - 1, Math.max(0, currentPageIndex + direction));
+      if (nextIndex === currentPageIndex) {
+        return false;
+      }
+
+      currentPageIndex = nextIndex;
+      await renderCurrentDocument();
+      return true;
+    }
+
     async function renderCurrentDocument() {
       if (!currentDocument) {
         currentPages = [{ title: "Document", content: "" }];
@@ -2421,6 +2436,7 @@ function renderHtml(appState, initialView = {}) {
         paginateLevel.value = "---";
       }
       currentPageIndex = 0;
+      wheelPageDelta = 0;
       await renderCurrentDocument();
     });
 
@@ -2430,14 +2446,35 @@ function renderHtml(appState, initialView = {}) {
     });
 
     prevPage.addEventListener("click", async () => {
-      currentPageIndex = Math.max(0, currentPageIndex - 1);
-      await renderCurrentDocument();
+      await changePresentationPage(-1);
     });
 
     nextPage.addEventListener("click", async () => {
-      currentPageIndex = Math.min(currentPages.length - 1, currentPageIndex + 1);
-      await renderCurrentDocument();
+      await changePresentationPage(1);
     });
+
+    document.addEventListener("wheel", async (event) => {
+      if (!document.body.classList.contains("presenting") || currentPages.length <= 1) {
+        return;
+      }
+
+      event.preventDefault();
+      const now = Date.now();
+      if (now - lastWheelPageTurn < wheelPageCooldownMs) {
+        return;
+      }
+
+      wheelPageDelta += Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX;
+      if (Math.abs(wheelPageDelta) < wheelPageThreshold) {
+        return;
+      }
+
+      const direction = wheelPageDelta > 0 ? 1 : -1;
+      wheelPageDelta = 0;
+      if (await changePresentationPage(direction)) {
+        lastWheelPageTurn = now;
+      }
+    }, { passive: false });
 
     async function initialize() {
       populateRepoSelect();
