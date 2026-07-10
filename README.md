@@ -16,6 +16,9 @@ This repository includes:
 - Mermaid rendering.
 - Tables, task lists, nested lists, blockquotes, code blocks, admonitions, links, bold, italic, and strikethrough.
 - Presentation mode with heading or `---` pagination.
+- Multiple independent content repos addressed by URL prefix, for example `/kpe.content`.
+- Configurable per-repo base directory hiding, so `/data/Users/...` displays and shares as `Users/...`.
+- Direct presentation links and a Share button that copies the current document URL.
 - On-demand refresh that runs `git pull --ff-only` and rebuilds the index.
 
 ## Docker Compose quick start
@@ -29,6 +32,8 @@ This repository includes:
 2. Edit `.env`:
 
    ```env
+   CONTENT_VIEWER_REPO_NAME=kpe.content
+   CONTENT_VIEWER_REPO_BASE_DIR=/data
    CONTENT_VIEWER_REPO_URL=https://github.com/OWNER/CONTENT_REPO.git
    CONTENT_VIEWER_REPO_BRANCH=main
    CONTENT_VIEWER_GITHUB_TOKEN=...
@@ -54,11 +59,34 @@ The compose file binds to `127.0.0.1:8080` by default so it is not exposed on ev
 | --- | --- | --- |
 | `PORT` | No | HTTP port inside the container. Defaults to `8080`. |
 | `HOST` | No | Bind address inside the container. Defaults to `0.0.0.0`. |
+| `CONTENT_VIEWER_REPO_NAME` | No | Single-repo URL slug. Defaults to `content`; use `kpe.content` for `/kpe.content/...` URLs. |
 | `CONTENT_VIEWER_REPO_PATH` | No | Local path to the content clone. Defaults to `/app/content` in Docker. |
 | `CONTENT_VIEWER_REPO_URL` | Yes for clone mode | Git URL for the Markdown content repo. |
 | `CONTENT_VIEWER_REPO_BRANCH` | No | Branch to clone. Defaults to `main`. |
+| `CONTENT_VIEWER_REPO_BASE_DIR` | No | Repo-relative directory to hide from display paths and shared URLs, for example `/data`. |
+| `CONTENT_VIEWER_REPOS` | No | Comma-separated multi-repo slugs. When set, use per-repo variables below. |
+| `CONTENT_VIEWER_REPO_<KEY>_PATH` | Yes for each multi repo | Local clone path. `<KEY>` is the slug uppercased with punctuation changed to `_`, e.g. `kpe.content` -> `KPE_CONTENT`. |
+| `CONTENT_VIEWER_REPO_<KEY>_URL` | Yes for clone mode | Git URL for that repo. |
+| `CONTENT_VIEWER_REPO_<KEY>_BRANCH` | No | Branch for that repo. Defaults to `main`. |
+| `CONTENT_VIEWER_REPO_<KEY>_BASE_DIR` | No | Repo-relative directory hidden from that repo's displayed paths and URLs. |
+| `CONTENT_VIEWER_REPO_<KEY>_LABEL` | No | Display label for that repo in the UI selector. |
 | `CONTENT_VIEWER_GITHUB_TOKEN` | Yes for private GitHub repos | Token used by `git clone` and `git pull`. |
 | `CONTENT_VIEWER_REFRESH_INTERVAL_SECONDS` | No | Optional scheduled pull/index refresh interval. |
+
+Example multi-repo `.env`:
+
+```env
+CONTENT_VIEWER_REPOS=kpe.content,team.docs
+CONTENT_VIEWER_REPO_KPE_CONTENT_PATH=/app/content/kpe.content
+CONTENT_VIEWER_REPO_KPE_CONTENT_URL=https://github.com/wtg-e2open/kpe-content.git
+CONTENT_VIEWER_REPO_KPE_CONTENT_BRANCH=main
+CONTENT_VIEWER_REPO_KPE_CONTENT_BASE_DIR=/data
+CONTENT_VIEWER_REPO_TEAM_DOCS_PATH=/app/content/team.docs
+CONTENT_VIEWER_REPO_TEAM_DOCS_URL=https://github.com/OWNER/team-docs.git
+CONTENT_VIEWER_REPO_TEAM_DOCS_BASE_DIR=/docs
+```
+
+Repo slugs are reserved for app routes, so do not use `api`, `asset`, `vendor`, or `favicon.ico`.
 
 ## Authentication and access requirements
 
@@ -86,7 +114,7 @@ If public or broad internal access is needed later, add auth before widening the
 Current single-container design:
 
 1. Node server serves the UI and JSON APIs.
-2. The same container owns the content clone under `/app/content`.
+2. The same container owns the content clone or clones under `/app/content`.
 3. Refresh requests run `git pull --ff-only`, rebuild the in-memory index, and keep serving.
 4. Mermaid assets are served from installed `node_modules`.
 
@@ -97,11 +125,14 @@ Separate containers are not required initially. Split later only if you want a d
 | Endpoint | Purpose |
 | --- | --- |
 | `GET /` | Web UI. |
+| `GET /<repo>` | Web UI scoped to one configured repo. |
+| `GET /<repo>/<path-to-document.md>` | Direct document link; opens that document in presentation mode. |
 | `GET /api/health` | Health/readiness details. |
-| `GET /api/search?q=...` | Search indexed Markdown. |
-| `GET /api/doc?path=...` | Fetch one document. |
-| `POST /api/refresh` | Pull latest content and rebuild index. |
-| `GET /asset?doc=...&src=...` | Resolve local document assets. |
+| `GET /api/repos` | List configured repos. |
+| `GET /api/search?repo=<repo>&q=...` | Search indexed Markdown. |
+| `GET /api/doc?repo=<repo>&path=...` | Fetch one document by display path. |
+| `POST /api/refresh?repo=<repo>` | Pull latest content and rebuild one repo index. |
+| `GET /asset?repo=<repo>&doc=...&src=...` | Resolve local document assets. |
 
 ## Next hardening steps
 

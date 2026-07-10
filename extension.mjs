@@ -9,10 +9,7 @@ import { joinSession, createCanvas, CanvasError } from "@github/copilot-sdk/exte
 const execFileAsync = promisify(execFile);
 const EXTENSION_DIR = path.dirname(fileURLToPath(import.meta.url));
 const PRIMARY_REPO_PATH = process.env.CONTENT_VIEWER_PRIMARY_REPO_PATH ?? "";
-const DISPOSABLE_REPO_PATH = process.env.CONTENT_VIEWER_REPO_PATH ?? path.join(EXTENSION_DIR, "content");
-const DISPOSABLE_REPO_URL = process.env.CONTENT_VIEWER_REPO_URL ?? "";
-const DISPOSABLE_REPO_BRANCH = process.env.CONTENT_VIEWER_REPO_BRANCH ?? "main";
-const DEFAULT_REPO_PATH = DISPOSABLE_REPO_PATH;
+const DEFAULT_CONTENT_ROOT = process.env.CONTENT_VIEWER_CONTENT_ROOT ?? path.join(EXTENSION_DIR, "content");
 const MERMAID_MODULE_PATH = path.join(EXTENSION_DIR, "node_modules", "mermaid", "dist", "mermaid.esm.min.mjs");
 const MAX_SNIPPET_LENGTH = 140;
 const MAX_INDEXED_FILE_BYTES = 1024 * 1024;
@@ -37,6 +34,7 @@ const SKIPPED_DIRECTORIES = new Set([
     ".next",
     ".turbo",
 ]);
+const RESERVED_REPO_SLUGS = new Set(["api", "asset", "vendor", "favicon.ico"]);
 
 const servers = new Map();
 
@@ -57,6 +55,102 @@ function pathsEqual(left, right) {
     return path.resolve(left).toLowerCase() === path.resolve(right).toLowerCase();
 }
 
+function sanitizeRepoSlug(value) {
+    return String(value ?? "")
+        .trim()
+        .replace(/^\/+|\/+$/g, "")
+        .replace(/[^A-Za-z0-9._-]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+}
+
+function repoEnvKey(slug) {
+    return sanitizeRepoSlug(slug).toUpperCase().replace(/[^A-Z0-9]+/g, "_");
+}
+
+function envForRepo(slug, name) {
+    return process.env[`CONTENT_VIEWER_REPO_${repoEnvKey(slug)}_${name}`];
+}
+
+function normalizeBaseDir(value) {
+    return String(value ?? "")
+        .trim()
+        .replaceAll("\\", "/")
+        .replace(/^\/+|\/+$/g, "")
+        .trim();
+}
+
+function stripBaseDir(relativePath, baseDir) {
+    const normalized = String(relativePath ?? "").replaceAll("\\", "/").replace(/^\/+/, "");
+    const normalizedBase = normalizeBaseDir(baseDir);
+    if (!normalizedBase) {
+        return normalized;
+    }
+    if (normalized === normalizedBase) {
+        return "";
+    }
+    return normalized.startsWith(`${normalizedBase}/`) ? normalized.slice(normalizedBase.length + 1) : normalized;
+}
+
+function addBaseDir(displayPath, baseDir) {
+    const normalized = String(displayPath ?? "").replaceAll("\\", "/").replace(/^\/+/, "");
+    const normalizedBase = normalizeBaseDir(baseDir);
+    return normalizedBase ? `${normalizedBase}/${normalized}`.replace(/\/+$/, "") : normalized;
+}
+
+function publicRepoConfig(repo) {
+    return {
+        slug: repo.slug,
+        label: repo.label,
+        baseDir: repo.baseDir,
+    };
+}
+
+function parseRepoConfigs() {
+    const configuredSlugs = String(process.env.CONTENT_VIEWER_REPOS ?? "")
+        .split(",")
+        .map(sanitizeRepoSlug)
+        .filter(Boolean);
+
+    const slugs = configuredSlugs.length
+        ? configuredSlugs
+        : [sanitizeRepoSlug(process.env.CONTENT_VIEWER_REPO_NAME ?? "content")];
+
+    const repos = slugs.map((slug, index) => {
+        const pathFromEnv = envForRepo(slug, "PATH") ?? (configuredSlugs.length ? undefined : process.env.CONTENT_VIEWER_REPO_PATH);
+        const urlFromEnv = envForRepo(slug, "URL") ?? (configuredSlugs.length ? undefined : process.env.CONTENT_VIEWER_REPO_URL);
+        const branchFromEnv = envForRepo(slug, "BRANCH") ?? (configuredSlugs.length ? undefined : process.env.CONTENT_VIEWER_REPO_BRANCH);
+        const baseDirFromEnv = envForRepo(slug, "BASE_DIR") ?? (configuredSlugs.length ? undefined : process.env.CONTENT_VIEWER_REPO_BASE_DIR);
+        return {
+            slug,
+            label: envForRepo(slug, "LABEL") ?? slug,
+            path: path.resolve(pathFromEnv ?? (configuredSlugs.length ? path.join(DEFAULT_CONTENT_ROOT, slug) : DEFAULT_CONTENT_ROOT)),
+            url: urlFromEnv ?? "",
+            branch: branchFromEnv ?? "main",
+            baseDir: normalizeBaseDir(baseDirFromEnv),
+            order: index,
+        };
+    });
+
+    if (!repos.length) {
+        throw new Error("Configure at least one content repository");
+    }
+
+    const seen = new Set();
+    for (const repo of repos) {
+        if (seen.has(repo.slug)) {
+            throw new Error(`Duplicate content repo slug: ${repo.slug}`);
+        }
+        if (RESERVED_REPO_SLUGS.has(repo.slug.toLowerCase())) {
+            throw new Error(`Content repo slug is reserved: ${repo.slug}`);
+        }
+        seen.add(repo.slug);
+    }
+
+    return repos;
+}
+
+const CONFIGURED_REPOS = parseRepoConfigs();
+
 function cleanTag(value) {
     return String(value ?? "")
         .trim()
@@ -76,7 +170,7 @@ function normalizeRepoPath(input) {
         }
     }
 
-    return DEFAULT_REPO_PATH;
+    return CONFIGURED_REPOS[0].path;
 }
 
 async function runGit(args) {
@@ -100,35 +194,29 @@ async function runGit(args) {
     }
 }
 
-async function ensureDisposableClone(repoPath) {
-    if (!pathsEqual(repoPath, DISPOSABLE_REPO_PATH)) {
-        return { skipped: true, output: "" };
-    }
-
+async function ensureDisposableClone(repoState) {
+    const { repo } = repoState;
+    const repoPath = repo.path;
     try {
         const stat = await fs.stat(path.join(repoPath, ".git"));
         if (stat.isDirectory()) {
-            return { skipped: false, output: "Disposable clone already exists." };
+            return { skipped: false, output: `${repo.slug} clone already exists.` };
         }
     } catch {
-        if (!DISPOSABLE_REPO_URL) {
-            throw new Error("Set CONTENT_VIEWER_REPO_URL before cloning content");
+        if (!repo.url) {
+            throw new Error(`Set a repository URL before cloning ${repo.slug}`);
         }
         await fs.mkdir(path.dirname(repoPath), { recursive: true });
-        const output = await runGit(["clone", "--depth", "1", "--branch", DISPOSABLE_REPO_BRANCH, DISPOSABLE_REPO_URL, repoPath]);
+        const output = await runGit(["clone", "--depth", "1", "--branch", repo.branch, repo.url, repoPath]);
         return { skipped: false, output };
     }
 
     throw new Error(`${repoPath} exists but is not a Git clone`);
 }
 
-async function updateDisposableClone(repoPath) {
-    if (!pathsEqual(repoPath, DISPOSABLE_REPO_PATH)) {
-        return { skipped: true, output: "Refresh skipped git pull because this is not the disposable clone." };
-    }
-
-    await ensureDisposableClone(repoPath);
-    const output = await runGit(["-C", repoPath, "pull", "--ff-only"]);
+async function updateDisposableClone(repoState) {
+    await ensureDisposableClone(repoState);
+    const output = await runGit(["-C", repoState.repo.path, "pull", "--ff-only"]);
     return { skipped: false, output };
 }
 
@@ -236,7 +324,8 @@ function parseSearchQuery(query) {
     return { tokens, tagFilters };
 }
 
-async function buildIndex(repoPath) {
+async function buildIndex(repo) {
+    const repoPath = repo.path;
     const rootStat = await fs.stat(repoPath);
     if (!rootStat.isDirectory()) {
         throw new Error(`${repoPath} is not a directory`);
@@ -267,16 +356,18 @@ async function buildIndex(repoPath) {
 
                 const content = await fs.readFile(fullPath, "utf8");
                 const relativePath = toPosixPath(path.relative(repoPath, fullPath));
+                const displayPath = stripBaseDir(relativePath, repo.baseDir);
                 const frontmatter = extractFrontmatter(content);
                 const title = extractTitle(content, fullPath);
                 docs.push({
-                    path: relativePath,
+                    path: displayPath,
+                    sourcePath: relativePath,
                     title,
                     tags: frontmatter.tags ?? [],
                     size: stat.size,
                     modified: stat.mtime.toISOString(),
                     content,
-                    searchable: `${title}\n${relativePath}\n${(frontmatter.tags ?? []).join(" ")}\n${content}`.toLowerCase(),
+                    searchable: `${title}\n${displayPath}\n${relativePath}\n${(frontmatter.tags ?? []).join(" ")}\n${content}`.toLowerCase(),
                 });
             }),
         );
@@ -285,6 +376,7 @@ async function buildIndex(repoPath) {
     await walk(repoPath);
     docs.sort((a, b) => a.path.localeCompare(b.path));
     return {
+        repo: publicRepoConfig(repo),
         repoPath,
         indexedAt: new Date().toISOString(),
         docs,
@@ -297,8 +389,8 @@ async function ensureIndex(state) {
     }
 
     if (!state.indexPromise) {
-        state.indexPromise = ensureDisposableClone(state.repoPath)
-            .then(() => buildIndex(state.repoPath))
+        state.indexPromise = ensureDisposableClone(state)
+            .then(() => buildIndex(state.repo))
             .then((index) => {
                 state.index = index;
                 state.error = null;
@@ -367,7 +459,7 @@ function searchIndex(index, query, limit = 50) {
 
 function findDoc(index, relativePath) {
     const normalizedPath = String(relativePath ?? "").replaceAll("\\", "/");
-    return index.docs.find((doc) => doc.path === normalizedPath);
+    return index.docs.find((doc) => doc.path === normalizedPath || doc.sourcePath === normalizedPath);
 }
 
 function isExternalAsset(src) {
@@ -429,19 +521,21 @@ async function findAssetByBasename(root, basename) {
     return null;
 }
 
-async function resolveAssetPath(state, docRelativePath, assetSrc) {
+async function resolveAssetPath(state, index, docRelativePath, assetSrc) {
     if (isExternalAsset(assetSrc)) {
         return null;
     }
 
-    const docRelative = normalizeRepoRelative(docRelativePath);
+    const doc = findDoc(index, docRelativePath);
+    const docRelative = normalizeRepoRelative(doc?.sourcePath ?? addBaseDir(docRelativePath, state.repo.baseDir));
     const assetRelative = stripAssetDecorations(assetSrc);
     if (!docRelative || !assetRelative) {
         return null;
     }
 
-    const docPath = path.resolve(state.repoPath, docRelative);
-    if (!isWithinDirectory(state.repoPath, docPath)) {
+    const repoPath = state.repo.path;
+    const docPath = path.resolve(repoPath, docRelative);
+    if (!isWithinDirectory(repoPath, docPath)) {
         return null;
     }
 
@@ -453,24 +547,27 @@ async function resolveAssetPath(state, docRelativePath, assetSrc) {
     if (normalizedAsset.startsWith("/")) {
         const repoRelative = normalizeRepoRelative(normalizedAsset);
         if (repoRelative) {
-            candidates.push(path.resolve(state.repoPath, repoRelative));
+            candidates.push(path.resolve(repoPath, repoRelative));
+            candidates.push(path.resolve(repoPath, addBaseDir(repoRelative, state.repo.baseDir)));
         }
     } else {
         candidates.push(path.resolve(docDirectory, normalizedAsset));
         candidates.push(path.resolve(docDirectory, basename));
         candidates.push(path.resolve(docDirectory, "attachments", basename));
-        candidates.push(path.resolve(state.repoPath, "attachments", basename));
-        candidates.push(path.resolve(state.repoPath, "data", "attachments", basename));
+        candidates.push(path.resolve(repoPath, "attachments", basename));
+        if (state.repo.baseDir) {
+            candidates.push(path.resolve(repoPath, state.repo.baseDir, "attachments", basename));
+        }
     }
 
     for (const candidate of candidates) {
-        if (isWithinDirectory(state.repoPath, candidate) && (await fileExists(candidate))) {
+        if (isWithinDirectory(repoPath, candidate) && (await fileExists(candidate))) {
             return candidate;
         }
     }
 
-    const found = await findAssetByBasename(state.repoPath, basename);
-    return found && isWithinDirectory(state.repoPath, found) ? found : null;
+    const found = await findAssetByBasename(repoPath, basename);
+    return found && isWithinDirectory(repoPath, found) ? found : null;
 }
 
 function sendJson(res, status, value) {
@@ -503,7 +600,65 @@ async function sendFile(res, filePath) {
     res.end(body);
 }
 
-function renderHtml(state) {
+function createRepoState(instanceId, repo) {
+    return {
+        instanceId,
+        repo,
+        index: null,
+        indexPromise: null,
+        error: null,
+    };
+}
+
+function createAppState(instanceId, repos = CONFIGURED_REPOS) {
+    const repoStates = new Map(repos.map((repo) => [repo.slug, createRepoState(instanceId, repo)]));
+    return {
+        instanceId,
+        repos,
+        repoStates,
+        defaultRepoSlug: repos[0].slug,
+    };
+}
+
+function getRepoState(appState, slug) {
+    if (!slug) {
+        return appState.repoStates.get(appState.defaultRepoSlug);
+    }
+    return appState.repoStates.get(slug);
+}
+
+function requireRepoState(appState, slug) {
+    const state = getRepoState(appState, slug);
+    if (!state) {
+        throw new Error(`Unknown content repo: ${slug}`);
+    }
+    return state;
+}
+
+function parseRepoRoute(appState, pathname) {
+    const segments = pathname.split("/").filter(Boolean);
+    if (!segments.length) {
+        return null;
+    }
+
+    const repoSlug = decodeURIComponent(segments[0]);
+    if (!appState.repoStates.has(repoSlug)) {
+        return null;
+    }
+
+    return {
+        repoSlug,
+        docPath: segments.slice(1).map((segment) => decodeURIComponent(segment)).join("/"),
+    };
+}
+
+function renderHtml(appState, initialView = {}) {
+    const repos = appState.repos.map(publicRepoConfig);
+    const initialRepoSlug = initialView.repoSlug && appState.repoStates.has(initialView.repoSlug)
+        ? initialView.repoSlug
+        : appState.defaultRepoSlug;
+    const initialDocPath = initialView.docPath ?? "";
+    const initialPresentMode = Boolean(initialView.presentMode && initialDocPath);
     return `<!doctype html>
 <html>
 <head>
@@ -663,6 +818,16 @@ function renderHtml(state) {
     input {
       flex: 1;
       min-width: 0;
+      padding: 8px 10px;
+      border: 1px solid var(--dashboard-border);
+      border-radius: 8px;
+      background: var(--dashboard-input-bg);
+      color: var(--dashboard-text);
+      font: inherit;
+    }
+
+    .repo-select {
+      max-width: 180px;
       padding: 8px 10px;
       border: 1px solid var(--dashboard-border);
       border-radius: 8px;
@@ -1110,10 +1275,12 @@ function renderHtml(state) {
   <header>
     <h1>KPE document dashboard</h1>
     <div class="search-row">
+      <select id="repo-select" class="repo-select" aria-label="Content repository"></select>
       <input id="search" type="search" placeholder="Search title, path, content, or tag:KT..." autocomplete="off" />
       <button id="refresh" type="button">Refresh</button>
+      <button id="share-link" type="button">Share</button>
     </div>
-    <div id="status" class="meta">Indexing ${escapeHtml(state.repoPath)}...</div>
+    <div id="status" class="meta">Indexing ${escapeHtml(initialRepoSlug)}...</div>
   </header>
   <main>
     <section id="results" class="results" aria-label="Search results"></section>
@@ -1143,7 +1310,14 @@ function renderHtml(state) {
     const prevPage = document.getElementById("prev-page");
     const nextPage = document.getElementById("next-page");
     const pageIndicator = document.getElementById("page-indicator");
-    let activePath = "";
+    const repoSelect = document.getElementById("repo-select");
+    const shareButton = document.getElementById("share-link");
+    const repos = ${JSON.stringify(repos)};
+    const initialRepoSlug = ${JSON.stringify(initialRepoSlug)};
+    const initialDocPath = ${JSON.stringify(initialDocPath)};
+    const initialPresentMode = ${JSON.stringify(initialPresentMode)};
+    let activeRepo = initialRepoSlug;
+    let activePath = initialDocPath;
     let searchTimer;
     let highlightTokens = [];
     let currentDocPath = "";
@@ -1184,9 +1358,35 @@ function renderHtml(state) {
 
     function displayResultPath(value) {
       const parts = String(value).split("/").filter(Boolean);
-      const withoutTopFolder = parts.length > 1 ? parts.slice(1) : [];
-      const directoryParts = withoutTopFolder.slice(0, -1);
+      const directoryParts = parts.slice(0, -1);
       return directoryParts.length ? directoryParts.join("/") : "Repository root";
+    }
+
+    function repoLabel(slug) {
+      const repo = repos.find((candidate) => candidate.slug === slug);
+      return repo ? repo.label : slug;
+    }
+
+    function repoPathPrefix(slug = activeRepo) {
+      return "/" + encodeURIComponent(slug);
+    }
+
+    function encodeDocumentPath(value) {
+      return String(value ?? "")
+        .split("/")
+        .filter(Boolean)
+        .map((segment) => encodeURIComponent(segment))
+        .join("/");
+    }
+
+    function documentUrl(path, slug = activeRepo) {
+      const encodedPath = encodeDocumentPath(path);
+      return window.location.origin + repoPathPrefix(slug) + (encodedPath ? "/" + encodedPath : "");
+    }
+
+    function apiUrl(path, params = {}) {
+      const search = new URLSearchParams({ repo: activeRepo, ...params });
+      return path + "?" + search.toString();
     }
 
     function getStoredTheme() {
@@ -1265,7 +1465,7 @@ function renderHtml(state) {
         return destination;
       }
 
-      return "/asset?doc=" + encodeURIComponent(docPath) + "&src=" + encodeURIComponent(destination);
+      return apiUrl("/asset", { doc: docPath, src: destination });
     }
 
     function isExternalLink(value) {
@@ -1311,7 +1511,7 @@ function renderHtml(state) {
       const hashPart = hashIndex >= 0 ? parsedDestination.slice(hashIndex + 1) : "";
       const targetPath = pathPart ? normalizeRelativePath(currentDocPath, pathPart) : currentDocPath;
       if (/\\.md$/i.test(pathPart) || (!pathPart && hashPart)) {
-        return '<a href="#" data-doc-link="' + escapeHtml(targetPath) + '" data-doc-hash="' + escapeHtml(hashPart) + '">' + renderedLabel + "</a>";
+        return '<a href="' + escapeHtml(documentUrl(targetPath)) + '" data-doc-link="' + escapeHtml(targetPath) + '" data-doc-hash="' + escapeHtml(hashPart) + '">' + renderedLabel + "</a>";
       }
 
       return '<a href="' + escapeHtml(resolveAssetUrl(parsedDestination)) + '" target="_blank" rel="noreferrer">' + renderedLabel + "</a>";
@@ -2041,18 +2241,17 @@ function renderHtml(state) {
         .filter((token) => token.length > 1);
       statusElement.textContent = "Searching...";
       try {
-        const data = await requestJson("/api/search?q=" + encodeURIComponent(query));
-        statusElement.textContent = data.count + " documents shown from " + data.total + " indexed markdown files";
+        const data = await requestJson(apiUrl("/api/search", { q: query }));
+        statusElement.textContent = data.count + " documents shown from " + data.total + " indexed markdown files in " + repoLabel(activeRepo);
         resultsElement.innerHTML = "";
 
         if (!data.results.length) {
-          activePath = "";
           resultsElement.innerHTML = '<div class="empty" style="padding:12px;">No matching documents.</div>';
           return;
         }
 
         const previousActivePath = activePath;
-        if (!data.results.some((result) => result.path === activePath)) {
+        if (!activePath) {
           activePath = data.results[0].path;
         }
 
@@ -2076,7 +2275,7 @@ function renderHtml(state) {
       }
     }
 
-    async function openDocument(path, rerenderResults = true) {
+    async function openDocument(path, rerenderResults = true, options = {}) {
       activePath = path;
       docTitle.textContent = "Loading...";
       docPath.textContent = path;
@@ -2084,13 +2283,20 @@ function renderHtml(state) {
       docContent.className = "markdown empty";
       docContent.textContent = "Loading document...";
       try {
-        const doc = await requestJson("/api/doc?path=" + encodeURIComponent(path));
+        const doc = await requestJson(apiUrl("/api/doc", { path }));
         currentDocument = doc;
         currentPageIndex = 0;
         docTitle.textContent = doc.title;
         docPath.textContent = doc.path + " · " + new Date(doc.modified).toLocaleString();
         docTags.innerHTML = doc.tags.map((tag) => '<span class="pill">' + escapeHtml(tag) + "</span>").join("");
+        if (options.presentMode) {
+          document.body.classList.add("presenting");
+          paginateLevel.value = "---";
+        }
         await renderCurrentDocument();
+        if (!options.skipHistory && window.history?.pushState) {
+          window.history.pushState({ repo: activeRepo, path }, "", documentUrl(path));
+        }
         if (rerenderResults) {
           await search();
         }
@@ -2098,6 +2304,54 @@ function renderHtml(state) {
         docTitle.textContent = "Could not load document";
         docContent.textContent = error.message;
       }
+    }
+
+    function populateRepoSelect() {
+      repoSelect.innerHTML = repos
+        .map((repo) => '<option value="' + escapeHtml(repo.slug) + '">' + escapeHtml(repo.label) + "</option>")
+        .join("");
+      repoSelect.value = activeRepo;
+      repoSelect.hidden = repos.length <= 1;
+    }
+
+    async function copyShareLink() {
+      if (!activePath) {
+        statusElement.textContent = "Open a document before sharing a direct link.";
+        return;
+      }
+
+      const link = documentUrl(activePath);
+      try {
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(link);
+        } else {
+          const textarea = document.createElement("textarea");
+          textarea.value = link;
+          textarea.style.position = "fixed";
+          textarea.style.left = "-9999px";
+          document.body.appendChild(textarea);
+          textarea.select();
+          document.execCommand("copy");
+          textarea.remove();
+        }
+        statusElement.textContent = "Copied direct presentation link: " + link;
+      } catch (error) {
+        statusElement.textContent = "Copy failed. Direct link: " + link;
+      }
+    }
+
+    function resetDocumentView() {
+      activePath = "";
+      currentDocPath = "";
+      currentDocument = null;
+      currentPages = [{ title: "Document", content: "" }];
+      currentPageIndex = 0;
+      docTitle.textContent = "Select a document";
+      docPath.textContent = "";
+      docTags.innerHTML = "";
+      docContent.className = "markdown empty";
+      docContent.textContent = "Search results will appear on the left. Choose a result to view its markdown here.";
+      updatePresentationControls();
     }
 
     searchInput.addEventListener("input", () => {
@@ -2109,7 +2363,7 @@ function renderHtml(state) {
       refreshButton.disabled = true;
       statusElement.textContent = "Pulling latest content and refreshing index...";
       try {
-        const refresh = await requestJson("/api/refresh", { method: "POST" });
+        const refresh = await requestJson(apiUrl("/api/refresh"), { method: "POST" });
         activePath = "";
         await search();
         if (refresh.git && !refresh.git.skipped) {
@@ -2121,6 +2375,17 @@ function renderHtml(state) {
         refreshButton.disabled = false;
       }
     });
+
+    repoSelect.addEventListener("change", async () => {
+      activeRepo = repoSelect.value;
+      resetDocumentView();
+      if (window.history?.pushState) {
+        window.history.pushState({ repo: activeRepo, path: "" }, "", repoPathPrefix(activeRepo));
+      }
+      await search();
+    });
+
+    shareButton.addEventListener("click", copyShareLink);
 
     docContent.addEventListener("click", async (event) => {
       const link = event.target.closest("a[data-doc-link]");
@@ -2167,16 +2432,24 @@ function renderHtml(state) {
       await renderCurrentDocument();
     });
 
-    applyTheme(getInitialTheme());
-    updatePresentationControls();
-    search();
-    searchInput.focus();
+    async function initialize() {
+      populateRepoSelect();
+      applyTheme(getInitialTheme());
+      updatePresentationControls();
+      if (initialDocPath) {
+        await openDocument(initialDocPath, false, { skipHistory: true, presentMode: initialPresentMode });
+      }
+      await search();
+      searchInput.focus();
+    }
+
+    initialize();
   </script>
 </body>
 </html>`;
 }
 
-async function handleRequest(state, req, res) {
+async function handleRequest(appState, req, res) {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
 
     try {
@@ -2187,18 +2460,34 @@ async function handleRequest(state, req, res) {
         }
 
         if (req.method === "GET" && url.pathname === "/") {
-            sendHtml(res, renderHtml(state));
+            sendHtml(res, renderHtml(appState));
             return;
         }
 
         if (req.method === "GET" && url.pathname === "/api/health") {
+            const repos = appState.repos.map((repo) => {
+                const state = requireRepoState(appState, repo.slug);
+                return {
+                    ...publicRepoConfig(repo),
+                    repoPath: repo.path,
+                    indexed: Boolean(state.index),
+                    indexedAt: state.index?.indexedAt ?? null,
+                    documents: state.index?.docs.length ?? 0,
+                    error: state.error,
+                };
+            });
             sendJson(res, 200, {
                 ok: true,
-                repoPath: state.repoPath,
-                indexed: Boolean(state.index),
-                indexedAt: state.index?.indexedAt ?? null,
-                documents: state.index?.docs.length ?? 0,
-                error: state.error,
+                defaultRepo: appState.defaultRepoSlug,
+                repos,
+            });
+            return;
+        }
+
+        if (req.method === "GET" && url.pathname === "/api/repos") {
+            sendJson(res, 200, {
+                defaultRepo: appState.defaultRepoSlug,
+                repos: appState.repos.map(publicRepoConfig),
             });
             return;
         }
@@ -2227,7 +2516,9 @@ async function handleRequest(state, req, res) {
         }
 
         if (req.method === "GET" && url.pathname === "/asset") {
-            const assetPath = await resolveAssetPath(state, url.searchParams.get("doc"), url.searchParams.get("src"));
+            const state = requireRepoState(appState, url.searchParams.get("repo"));
+            const index = await ensureIndex(state);
+            const assetPath = await resolveAssetPath(state, index, url.searchParams.get("doc"), url.searchParams.get("src"));
             if (!assetPath) {
                 sendJson(res, 404, { error: "Asset not found" });
                 return;
@@ -2238,6 +2529,7 @@ async function handleRequest(state, req, res) {
         }
 
         if (req.method === "GET" && url.pathname === "/api/search") {
+            const state = requireRepoState(appState, url.searchParams.get("repo"));
             const index = await ensureIndex(state);
             const query = url.searchParams.get("q") ?? "";
             const limit = Number(url.searchParams.get("limit") ?? 50);
@@ -2247,6 +2539,7 @@ async function handleRequest(state, req, res) {
                 count: results.length,
                 total: index.docs.length,
                 indexedAt: index.indexedAt,
+                repo: index.repo,
                 repoPath: index.repoPath,
                 results,
             });
@@ -2254,6 +2547,7 @@ async function handleRequest(state, req, res) {
         }
 
         if (req.method === "GET" && url.pathname === "/api/doc") {
+            const state = requireRepoState(appState, url.searchParams.get("repo"));
             const index = await ensureIndex(state);
             const doc = findDoc(index, url.searchParams.get("path"));
             if (!doc) {
@@ -2263,6 +2557,7 @@ async function handleRequest(state, req, res) {
 
             sendJson(res, 200, {
                 path: doc.path,
+                sourcePath: doc.sourcePath,
                 title: doc.title,
                 tags: doc.tags,
                 modified: doc.modified,
@@ -2273,16 +2568,28 @@ async function handleRequest(state, req, res) {
         }
 
         if (req.method === "POST" && url.pathname === "/api/refresh") {
-            const git = await updateDisposableClone(state.repoPath);
+            const state = requireRepoState(appState, url.searchParams.get("repo"));
+            const git = await updateDisposableClone(state);
             state.index = null;
             state.indexPromise = null;
             const index = await ensureIndex(state);
             sendJson(res, 200, {
                 total: index.docs.length,
                 indexedAt: index.indexedAt,
+                repo: index.repo,
                 repoPath: index.repoPath,
                 git,
             });
+            return;
+        }
+
+        const repoRoute = req.method === "GET" ? parseRepoRoute(appState, url.pathname) : null;
+        if (repoRoute) {
+            sendHtml(res, renderHtml(appState, {
+                repoSlug: repoRoute.repoSlug,
+                docPath: repoRoute.docPath,
+                presentMode: Boolean(repoRoute.docPath),
+            }));
             return;
         }
 
@@ -2293,13 +2600,10 @@ async function handleRequest(state, req, res) {
 }
 
 async function startServer(instanceId, repoPath) {
-    const state = {
-        instanceId,
-        repoPath,
-        index: null,
-        indexPromise: null,
-        error: null,
-    };
+    const repos = repoPath && !pathsEqual(repoPath, CONFIGURED_REPOS[0].path)
+        ? [{ ...CONFIGURED_REPOS[0], slug: "content", label: "content", path: repoPath, url: "", baseDir: "" }]
+        : CONFIGURED_REPOS;
+    const state = createAppState(instanceId, repos);
     const server = createServer((req, res) => {
         void handleRequest(state, req, res);
     });
@@ -2307,11 +2611,14 @@ async function startServer(instanceId, repoPath) {
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
     const address = server.address();
     const port = typeof address === "object" && address ? address.port : 0;
-    void ensureIndex(state).catch(() => {});
+    for (const repoState of state.repoStates.values()) {
+        void ensureIndex(repoState).catch(() => {});
+    }
 
     return {
         server,
         state,
+        repoPath,
         url: `http://127.0.0.1:${port}/`,
     };
 }
@@ -2329,6 +2636,10 @@ const session = await joinSession({
                         type: "string",
                         description: "Absolute path to the repository containing markdown documents.",
                     },
+                    repo: {
+                        type: "string",
+                        description: "Configured repository slug to search or refresh.",
+                    },
                 },
                 additionalProperties: false,
             },
@@ -2342,13 +2653,16 @@ const session = await joinSession({
                             throw new CanvasError("dashboard_not_open", "Open the dashboard before refreshing its index.");
                         }
 
-                        const git = await updateDisposableClone(entry.state.repoPath);
-                        entry.state.index = null;
-                        entry.state.indexPromise = null;
-                        const index = await ensureIndex(entry.state);
+                        const input = ctx.input && typeof ctx.input === "object" ? ctx.input : {};
+                        const repoState = requireRepoState(entry.state, typeof input.repo === "string" ? input.repo : undefined);
+                        const git = await updateDisposableClone(repoState);
+                        repoState.index = null;
+                        repoState.indexPromise = null;
+                        const index = await ensureIndex(repoState);
                         return {
                             total: index.docs.length,
                             indexedAt: index.indexedAt,
+                            repo: index.repo,
                             repoPath: index.repoPath,
                             git,
                         };
@@ -2361,6 +2675,7 @@ const session = await joinSession({
                         type: "object",
                         properties: {
                             query: { type: "string" },
+                            repo: { type: "string" },
                             limit: { type: "number", minimum: 1, maximum: 100 },
                         },
                         additionalProperties: false,
@@ -2371,12 +2686,14 @@ const session = await joinSession({
                             throw new CanvasError("dashboard_not_open", "Open the dashboard before searching documents.");
                         }
 
-                        const index = await ensureIndex(entry.state);
                         const input = ctx.input && typeof ctx.input === "object" ? ctx.input : {};
+                        const repoState = requireRepoState(entry.state, typeof input.repo === "string" ? input.repo : undefined);
+                        const index = await ensureIndex(repoState);
                         const results = searchIndex(index, typeof input.query === "string" ? input.query : "", input.limit ?? 20);
                         return {
                             total: index.docs.length,
                             count: results.length,
+                            repo: index.repo,
                             results,
                         };
                     },
@@ -2385,7 +2702,7 @@ const session = await joinSession({
             open: async (ctx) => {
                 const repoPath = normalizeRepoPath(ctx.input);
                 let entry = servers.get(ctx.instanceId);
-                if (!entry || entry.state.repoPath !== repoPath) {
+                if (!entry || entry.repoPath !== repoPath) {
                     if (entry) {
                         await new Promise((resolve) => entry.server.close(() => resolve()));
                     }
@@ -2396,7 +2713,7 @@ const session = await joinSession({
 
                 return {
                     title: "KPE document dashboard",
-                    status: `Searching ${repoPath}`,
+                    status: `Searching ${entry.state.repos.map((repo) => repo.slug).join(", ")}`,
                     url: entry.url,
                 };
             },
