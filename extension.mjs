@@ -1362,6 +1362,10 @@ function renderHtml(appState, initialView = {}) {
       return directoryParts.length ? directoryParts.join("/") : "Repository root";
     }
 
+    function hasHiddenHeadingForToc(value) {
+      return /(?:^|\\s)\\{[^}]*\\.hidden-heading-for-toc[^}]*\\}\\s*$/.test(String(value || ""));
+    }
+
     function repoLabel(slug) {
       const repo = repos.find((candidate) => candidate.slug === slug);
       return repo ? repo.label : slug;
@@ -2048,6 +2052,9 @@ function renderHtml(appState, initialView = {}) {
         if (heading) {
           flushParagraph();
           closeList();
+          if (hasHiddenHeadingForToc(heading[2])) {
+            continue;
+          }
           const level = heading[1].length;
           html.push("<h" + level + ">" + inlineMarkdown(heading[2]) + "</h" + level + ">");
           continue;
