@@ -668,24 +668,24 @@ function renderHtml(appState, initialView = {}) {
   <style>
     :root {
       color-scheme: light dark;
-      --dashboard-bg: #f5f7fb;
-      --dashboard-text: #0f172a;
-      --dashboard-muted: #64748b;
-      --dashboard-border: #dbe2ea;
-      --dashboard-border-muted: #e2e8f0;
-      --dashboard-hr: #94a3b8;
-      --dashboard-surface: #ffffff;
-      --dashboard-input-bg: #ffffff;
-      --dashboard-button-bg: #eef2ff;
-      --dashboard-button-hover-bg: #e0e7ff;
-      --dashboard-hover-bg: rgba(9, 105, 218, 0.08);
-      --dashboard-active-bg: #eef2ff;
-      --dashboard-active-border: #4338ca;
-      --dashboard-code-bg: #f8fafc;
-      --dashboard-code-border: #e2e8f0;
-      --dashboard-mark-bg: #fef3c7;
-      --dashboard-mark-text: #92400e;
-      --dashboard-link: #4338ca;
+      --dashboard-bg: #e9e6df;
+      --dashboard-text: #111827;
+      --dashboard-muted: #6f6a61;
+      --dashboard-border: #d1cbc0;
+      --dashboard-border-muted: #ddd7cc;
+      --dashboard-hr: #9c9486;
+      --dashboard-surface: #f1eee7;
+      --dashboard-input-bg: #f6f3ec;
+      --dashboard-button-bg: #ddd8ce;
+      --dashboard-button-hover-bg: #d4cec2;
+      --dashboard-hover-bg: rgba(112, 100, 82, 0.12);
+      --dashboard-active-bg: #f1eee7;
+      --dashboard-active-border: #8a8172;
+      --dashboard-code-bg: #e6e2d8;
+      --dashboard-code-border: #d1cbc0;
+      --dashboard-mark-bg: #eadca9;
+      --dashboard-mark-text: #6f4b0e;
+      --dashboard-link: #4f5f8f;
     }
 
     @media (prefers-color-scheme: dark) {
@@ -738,24 +738,24 @@ function renderHtml(appState, initialView = {}) {
     :root[data-dashboard-theme="light"],
     body[data-dashboard-theme="light"] {
       color-scheme: light;
-      --dashboard-bg: #f5f7fb;
-      --dashboard-text: #0f172a;
-      --dashboard-muted: #64748b;
-      --dashboard-border: #dbe2ea;
-      --dashboard-border-muted: #e2e8f0;
-      --dashboard-hr: #94a3b8;
-      --dashboard-surface: #ffffff;
-      --dashboard-input-bg: #ffffff;
-      --dashboard-button-bg: #eef2ff;
-      --dashboard-button-hover-bg: #e0e7ff;
-      --dashboard-hover-bg: rgba(9, 105, 218, 0.08);
-      --dashboard-active-bg: #eef2ff;
-      --dashboard-active-border: #4338ca;
-      --dashboard-code-bg: #f8fafc;
-      --dashboard-code-border: #e2e8f0;
-      --dashboard-mark-bg: #fef3c7;
-      --dashboard-mark-text: #92400e;
-      --dashboard-link: #4338ca;
+      --dashboard-bg: #e9e6df;
+      --dashboard-text: #111827;
+      --dashboard-muted: #6f6a61;
+      --dashboard-border: #d1cbc0;
+      --dashboard-border-muted: #ddd7cc;
+      --dashboard-hr: #9c9486;
+      --dashboard-surface: #f1eee7;
+      --dashboard-input-bg: #f6f3ec;
+      --dashboard-button-bg: #ddd8ce;
+      --dashboard-button-hover-bg: #d4cec2;
+      --dashboard-hover-bg: rgba(112, 100, 82, 0.12);
+      --dashboard-active-bg: #f1eee7;
+      --dashboard-active-border: #8a8172;
+      --dashboard-code-bg: #e6e2d8;
+      --dashboard-code-border: #d1cbc0;
+      --dashboard-mark-bg: #eadca9;
+      --dashboard-mark-text: #6f4b0e;
+      --dashboard-link: #4f5f8f;
     }
 
     :root[data-dashboard-theme="dark"],
@@ -809,24 +809,24 @@ function renderHtml(appState, initialView = {}) {
     :root[data-dashboard-theme="spring"],
     body[data-dashboard-theme="spring"] {
       color-scheme: light;
-      --dashboard-bg: #cfd5d1;
+      --dashboard-bg: #c8d8e2;
       --dashboard-text: #141c24;
-      --dashboard-muted: #546570;
-      --dashboard-border: #aab8b3;
-      --dashboard-border-muted: #b8c4bf;
-      --dashboard-hr: #0e1421;
-      --dashboard-surface: #d6d9d7;
-      --dashboard-input-bg: #d6d9d7;
-      --dashboard-button-bg: #bdcec7;
-      --dashboard-button-hover-bg: #bbc9cc;
-      --dashboard-hover-bg: rgba(49, 133, 102, 0.12);
-      --dashboard-active-bg: #bdcec7;
-      --dashboard-active-border: #318566;
-      --dashboard-code-bg: #c9d1d5;
-      --dashboard-code-border: #b8c4bf;
-      --dashboard-mark-bg: #d3c49b;
+      --dashboard-muted: #536a75;
+      --dashboard-border: #9fb7c5;
+      --dashboard-border-muted: #b5c9d4;
+      --dashboard-hr: #2f7f62;
+      --dashboard-surface: #d6e5d0;
+      --dashboard-input-bg: #dbe8ee;
+      --dashboard-button-bg: #bdd4e2;
+      --dashboard-button-hover-bg: #b2cad9;
+      --dashboard-hover-bg: rgba(58, 120, 158, 0.14);
+      --dashboard-active-bg: #d6e5d0;
+      --dashboard-active-border: #2f7f62;
+      --dashboard-code-bg: #cbdcc8;
+      --dashboard-code-border: #b8c9b4;
+      --dashboard-mark-bg: #d8c990;
       --dashboard-mark-text: #68460e;
-      --dashboard-link: #407d9f;
+      --dashboard-link: #2f6f9b;
     }
 
     :root[data-dashboard-theme="forest"],
@@ -1063,6 +1063,7 @@ function renderHtml(appState, initialView = {}) {
 
     .results {
       border-right: 1px solid var(--dashboard-border);
+      background: var(--dashboard-bg);
       overflow: auto;
       max-height: calc(100vh - 97px);
     }
@@ -1083,7 +1084,7 @@ function renderHtml(appState, initialView = {}) {
     }
 
     .result.active {
-      background: var(--dashboard-active-bg);
+      background: var(--dashboard-surface);
       box-shadow: inset 3px 0 0 var(--dashboard-active-border);
     }
 
@@ -1124,6 +1125,7 @@ function renderHtml(appState, initialView = {}) {
     .document {
       min-width: 0;
       padding: 18px 22px 32px;
+      background: var(--dashboard-surface);
       overflow: auto;
       max-height: calc(100vh - 97px);
     }
