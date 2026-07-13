@@ -25,6 +25,8 @@ Preserve `dark` as a legacy alias for `ocean` if existing URLs or local storage 
 2. Remove the old per-theme `--dashboard-*` definitions from `server.mjs` and `extension.mjs`.
 3. Replace dashboard variables with canonical variables:
    - `--dashboard-bg` -> `--theme-chrome`
+   - text rendered on the top/search/list chrome -> `--theme-chrome-text`
+   - muted text rendered on the top/search/list chrome -> `--theme-chrome-muted-text`
    - `--dashboard-surface` -> `--theme-surface`
    - `--dashboard-text` -> `--theme-text`
    - `--dashboard-muted` -> `--theme-muted-text`

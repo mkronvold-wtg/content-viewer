@@ -33,6 +33,7 @@ Map old Revu themes as follows:
 4. Replace Revu palette fields with CSS variables:
    - `appBackground` / `loginBackground` -> `--theme-bg`
    - `sidebarBackground` -> `--theme-chrome`
+   - `sidebarText` / `navText` -> `--theme-chrome-text`
    - `surfaceBackground` / `modalSurfaceBackground` -> `--theme-surface` / `--theme-modal-surface-bg`
    - `surfaceText` / `appText` -> `--theme-text`
    - `mutedText` -> `--theme-muted-text`

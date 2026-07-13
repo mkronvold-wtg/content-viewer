@@ -26,6 +26,8 @@ Preserve `dark` as a legacy alias for `ocean`.
 3. Replace local app variables with canonical variables wherever practical:
    - app/page background -> `--theme-bg`
    - top/sidebar chrome -> `--theme-chrome`
+   - text on top/sidebar chrome -> `--theme-chrome-text`
+   - muted text on top/sidebar chrome -> `--theme-chrome-muted-text`
    - cards/readable panels -> `--theme-surface`
    - muted panels/code/table headers -> `--theme-surface-muted`
    - primary text -> `--theme-text`

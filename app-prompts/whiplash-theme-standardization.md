@@ -38,6 +38,8 @@ Retire or manually map old themes not included in the canonical pack: `evening-b
 3. Replace Whiplash variables with canonical variables:
    - `--app-bg` -> `--theme-bg`
    - `--sidebar-bg` -> `--theme-chrome`
+   - text rendered on the sidebar/header chrome -> `--theme-chrome-text`
+   - muted text rendered on the sidebar/header chrome -> `--theme-chrome-muted-text`
    - `--panel-bg` -> `--theme-surface`
    - `--week-bg` -> `--theme-surface-muted`
    - `--input-bg` -> `--theme-input-bg`
