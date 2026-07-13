@@ -6,6 +6,7 @@ This repository includes:
 
 - `server.mjs` - standalone Node HTTP server for Docker.
 - `extension.mjs` - Copilot canvas extension source kept for side-panel usage.
+- `theme.css` and `theme.json` - vendored shared theme standard from `mkronvold/themes`.
 - `Dockerfile` and `docker-compose.yml` - first container deployment target.
 
 ## Features
@@ -16,6 +17,7 @@ This repository includes:
 - Mermaid rendering.
 - Tables, task lists, nested lists, blockquotes, code blocks, admonitions, links, bold, italic, and strikethrough.
 - Presentation mode with heading or `---` pagination.
+- Shared canonical `mkronvold/themes` theme pack, including Light, Sepia, Spring, Summer, Sunshower, Ocean, Forest, Autumn, Autumn Light, Coyote, Coyote Dark, Guinness, Night, Midnight, Pine, and Obsidian.
 - Multiple independent content repos addressed by URL prefix, for example `/kpe.content`.
 - Configurable per-repo base directory hiding, so `/data/Users/...` displays and shares as `Users/...`.
 - Direct presentation links and a Share button that copies the current document URL.

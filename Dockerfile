@@ -7,7 +7,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts
 
-COPY server.mjs ./
+COPY server.mjs theme.css theme.json ./
 
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \

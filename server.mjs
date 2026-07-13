@@ -10,11 +10,15 @@ const EXTENSION_DIR = path.dirname(fileURLToPath(import.meta.url));
 const PRIMARY_REPO_PATH = process.env.CONTENT_VIEWER_PRIMARY_REPO_PATH ?? "";
 const DEFAULT_CONTENT_ROOT = process.env.CONTENT_VIEWER_CONTENT_ROOT ?? path.join(EXTENSION_DIR, "content");
 const MERMAID_MODULE_PATH = path.join(EXTENSION_DIR, "node_modules", "mermaid", "dist", "mermaid.esm.min.mjs");
+const THEME_CSS_PATH = path.join(EXTENSION_DIR, "theme.css");
+const THEME_JSON_PATH = path.join(EXTENSION_DIR, "theme.json");
 const MAX_SNIPPET_LENGTH = 140;
 const MAX_INDEXED_FILE_BYTES = 1024 * 1024;
 const MIME_TYPES = new Map([
     [".avif", "image/avif"],
+    [".css", "text/css; charset=utf-8"],
     [".gif", "image/gif"],
+    [".json", "application/json; charset=utf-8"],
     [".jpg", "image/jpeg"],
     [".jpeg", "image/jpeg"],
     [".js", "text/javascript; charset=utf-8"],
@@ -665,237 +669,10 @@ function renderHtml(appState, initialView = {}) {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>KPE document dashboard</title>
+  <link rel="stylesheet" href="/theme.css" />
   <style>
     :root {
       color-scheme: light dark;
-      --dashboard-bg: #d6d6d6;
-      --dashboard-text: #111827;
-      --dashboard-muted: #6f6a61;
-      --dashboard-border: #d1cbc0;
-      --dashboard-border-muted: #ddd7cc;
-      --dashboard-hr: #9c9486;
-      --dashboard-surface: #f2f2f2;
-      --dashboard-input-bg: #f6f3ec;
-      --dashboard-button-bg: #ddd8ce;
-      --dashboard-button-hover-bg: #d4cec2;
-      --dashboard-hover-bg: rgba(112, 100, 82, 0.12);
-      --dashboard-active-bg: #f2f2f2;
-      --dashboard-active-border: #8a8172;
-      --dashboard-code-bg: #e6e2d8;
-      --dashboard-code-border: #d1cbc0;
-      --dashboard-mark-bg: #eadca9;
-      --dashboard-mark-text: #6f4b0e;
-      --dashboard-link: #4f5f8f;
-    }
-
-    @media (prefers-color-scheme: dark) {
-      :root:not([data-color-mode="light"]) {
-        --dashboard-bg: #07111f;
-        --dashboard-text: #e8f1ff;
-        --dashboard-muted: #93a8c5;
-        --dashboard-border: #2b4262;
-        --dashboard-border-muted: #395272;
-        --dashboard-hr: #8fb8ff;
-        --dashboard-surface: #0c1628;
-        --dashboard-input-bg: #08101c;
-        --dashboard-button-bg: #14243d;
-        --dashboard-button-hover-bg: #1a2942;
-        --dashboard-hover-bg: rgba(94, 167, 255, 0.14);
-        --dashboard-active-bg: #14243d;
-        --dashboard-active-border: #5ea7ff;
-        --dashboard-code-bg: #15253d;
-        --dashboard-code-border: #395272;
-        --dashboard-mark-bg: #433318;
-        --dashboard-mark-text: #ffd96a;
-        --dashboard-link: #9dc4ff;
-      }
-    }
-
-    :root[data-color-mode="dark"],
-    :root[data-visual-mode="dark"],
-    body[data-color-mode="dark"],
-    body[data-visual-mode="dark"] {
-      --dashboard-bg: #07111f;
-      --dashboard-text: #e8f1ff;
-      --dashboard-muted: #93a8c5;
-      --dashboard-border: #2b4262;
-      --dashboard-border-muted: #395272;
-      --dashboard-hr: #8fb8ff;
-      --dashboard-surface: #0c1628;
-      --dashboard-input-bg: #08101c;
-      --dashboard-button-bg: #14243d;
-      --dashboard-button-hover-bg: #1a2942;
-      --dashboard-hover-bg: rgba(94, 167, 255, 0.14);
-      --dashboard-active-bg: #14243d;
-      --dashboard-active-border: #5ea7ff;
-      --dashboard-code-bg: #15253d;
-      --dashboard-code-border: #395272;
-      --dashboard-mark-bg: #433318;
-      --dashboard-mark-text: #ffd96a;
-      --dashboard-link: #9dc4ff;
-    }
-
-    :root[data-dashboard-theme="light"],
-    body[data-dashboard-theme="light"] {
-      color-scheme: light;
-      --dashboard-bg: #d6d6d6;
-      --dashboard-text: #111827;
-      --dashboard-muted: #6f6a61;
-      --dashboard-border: #d1cbc0;
-      --dashboard-border-muted: #ddd7cc;
-      --dashboard-hr: #9c9486;
-      --dashboard-surface: #f2f2f2;
-      --dashboard-input-bg: #f6f3ec;
-      --dashboard-button-bg: #ddd8ce;
-      --dashboard-button-hover-bg: #d4cec2;
-      --dashboard-hover-bg: rgba(112, 100, 82, 0.12);
-      --dashboard-active-bg: #f2f2f2;
-      --dashboard-active-border: #8a8172;
-      --dashboard-code-bg: #e6e2d8;
-      --dashboard-code-border: #d1cbc0;
-      --dashboard-mark-bg: #eadca9;
-      --dashboard-mark-text: #6f4b0e;
-      --dashboard-link: #4f5f8f;
-    }
-
-    :root[data-dashboard-theme="dark"],
-    :root[data-dashboard-theme="ocean"],
-    body[data-dashboard-theme="dark"],
-    body[data-dashboard-theme="ocean"] {
-      color-scheme: dark;
-      --dashboard-bg: #07111f;
-      --dashboard-text: #e8f1ff;
-      --dashboard-muted: #93a8c5;
-      --dashboard-border: #2b4262;
-      --dashboard-border-muted: #395272;
-      --dashboard-hr: #8fb8ff;
-      --dashboard-surface: #0c1628;
-      --dashboard-input-bg: #08101c;
-      --dashboard-button-bg: #14243d;
-      --dashboard-button-hover-bg: #1a2942;
-      --dashboard-hover-bg: rgba(94, 167, 255, 0.14);
-      --dashboard-active-bg: #14243d;
-      --dashboard-active-border: #5ea7ff;
-      --dashboard-code-bg: #15253d;
-      --dashboard-code-border: #395272;
-      --dashboard-mark-bg: #433318;
-      --dashboard-mark-text: #ffd96a;
-      --dashboard-link: #9dc4ff;
-    }
-
-    :root[data-dashboard-theme="sepia"],
-    body[data-dashboard-theme="sepia"] {
-      color-scheme: light;
-      --dashboard-bg: #e8e2d8;
-      --dashboard-text: #3f3424;
-      --dashboard-muted: #7a6a58;
-      --dashboard-border: #d8cab2;
-      --dashboard-border-muted: #e2d7c4;
-      --dashboard-hr: #a48b6b;
-      --dashboard-surface: #fbf6ed;
-      --dashboard-input-bg: #fffaf2;
-      --dashboard-button-bg: #ede2d0;
-      --dashboard-button-hover-bg: #e2d7c4;
-      --dashboard-hover-bg: rgba(140, 90, 60, 0.12);
-      --dashboard-active-bg: #ede2d0;
-      --dashboard-active-border: #8c5a3c;
-      --dashboard-code-bg: #efe6d7;
-      --dashboard-code-border: #e2d7c4;
-      --dashboard-mark-bg: #f6e1b4;
-      --dashboard-mark-text: #7a4a11;
-      --dashboard-link: #8c5a3c;
-    }
-
-    :root[data-dashboard-theme="spring"],
-    body[data-dashboard-theme="spring"] {
-      color-scheme: light;
-      --dashboard-bg: #c8d8e2;
-      --dashboard-text: #141c24;
-      --dashboard-muted: #536a75;
-      --dashboard-border: #9fb7c5;
-      --dashboard-border-muted: #b5c9d4;
-      --dashboard-hr: #2f7f62;
-      --dashboard-surface: #d6e5d0;
-      --dashboard-input-bg: #dbe8ee;
-      --dashboard-button-bg: #bdd4e2;
-      --dashboard-button-hover-bg: #b2cad9;
-      --dashboard-hover-bg: rgba(58, 120, 158, 0.14);
-      --dashboard-active-bg: #d6e5d0;
-      --dashboard-active-border: #2f7f62;
-      --dashboard-code-bg: #cbdcc8;
-      --dashboard-code-border: #b8c9b4;
-      --dashboard-mark-bg: #d8c990;
-      --dashboard-mark-text: #68460e;
-      --dashboard-link: #2f6f9b;
-    }
-
-    :root[data-dashboard-theme="forest"],
-    body[data-dashboard-theme="forest"] {
-      color-scheme: dark;
-      --dashboard-bg: #06110d;
-      --dashboard-text: #e3f6eb;
-      --dashboard-muted: #8cb59d;
-      --dashboard-border: #1f3a31;
-      --dashboard-border-muted: #2b4d43;
-      --dashboard-hr: #3dff78;
-      --dashboard-surface: #17241f;
-      --dashboard-input-bg: #07130e;
-      --dashboard-button-bg: #143227;
-      --dashboard-button-hover-bg: #163228;
-      --dashboard-hover-bg: rgba(56, 211, 144, 0.14);
-      --dashboard-active-bg: #17241f;
-      --dashboard-active-border: #38d390;
-      --dashboard-code-bg: #10251d;
-      --dashboard-code-border: #2b4d43;
-      --dashboard-mark-bg: #3a3317;
-      --dashboard-mark-text: #f7d76b;
-      --dashboard-link: #66d9a3;
-    }
-
-    :root[data-dashboard-theme="autumn"],
-    body[data-dashboard-theme="autumn"] {
-      color-scheme: dark;
-      --dashboard-bg: #42261b;
-      --dashboard-text: #f8e7d2;
-      --dashboard-muted: #d7ad82;
-      --dashboard-border: #966445;
-      --dashboard-border-muted: #ae7853;
-      --dashboard-hr: #f0cd67;
-      --dashboard-surface: #5f3a28;
-      --dashboard-input-bg: #543323;
-      --dashboard-button-bg: #7d4f35;
-      --dashboard-button-hover-bg: #845337;
-      --dashboard-hover-bg: rgba(217, 109, 44, 0.16);
-      --dashboard-active-bg: #7d4f35;
-      --dashboard-active-border: #d96d2c;
-      --dashboard-code-bg: #74472d;
-      --dashboard-code-border: #ae7853;
-      --dashboard-mark-bg: #7c5620;
-      --dashboard-mark-text: #ffe18f;
-      --dashboard-link: #f2a33f;
-    }
-
-    :root[data-dashboard-theme="night"],
-    body[data-dashboard-theme="night"] {
-      color-scheme: dark;
-      --dashboard-bg: #08090b;
-      --dashboard-text: #edf0f4;
-      --dashboard-muted: #9ba3af;
-      --dashboard-border: #2a2f37;
-      --dashboard-border-muted: #3a414c;
-      --dashboard-hr: #d6dbe2;
-      --dashboard-surface: #111317;
-      --dashboard-input-bg: #0d0f12;
-      --dashboard-button-bg: #1b1f26;
-      --dashboard-button-hover-bg: #1d222a;
-      --dashboard-hover-bg: rgba(214, 219, 226, 0.12);
-      --dashboard-active-bg: #1b1f26;
-      --dashboard-active-border: #d6dbe2;
-      --dashboard-code-bg: #181b20;
-      --dashboard-code-border: #3a414c;
-      --dashboard-mark-bg: #3b331d;
-      --dashboard-mark-text: #eed388;
-      --dashboard-link: #d6dbe2;
     }
 
     * {
@@ -904,8 +681,8 @@ function renderHtml(appState, initialView = {}) {
 
     body {
       margin: 0;
-      background: var(--dashboard-bg);
-      color: var(--dashboard-text);
+      background: var(--theme-chrome);
+      color: var(--theme-text);
       font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
       font-size: var(--text-body-medium, 14px);
       line-height: var(--leading-body-medium, 20px);
@@ -916,8 +693,8 @@ function renderHtml(appState, initialView = {}) {
       top: 0;
       z-index: 2;
       padding: 12px;
-      border-bottom: 1px solid var(--dashboard-border);
-      background: var(--dashboard-bg);
+      border-bottom: 1px solid var(--theme-border);
+      background: var(--theme-chrome);
     }
 
     h1 {
@@ -936,25 +713,25 @@ function renderHtml(appState, initialView = {}) {
       flex: 1;
       min-width: 0;
       padding: 8px 10px;
-      border: 1px solid var(--dashboard-border);
+      border: 1px solid var(--theme-border);
       border-radius: 8px;
-      background: var(--dashboard-input-bg);
-      color: var(--dashboard-text);
+      background: var(--theme-input-bg);
+      color: var(--theme-text);
       font: inherit;
     }
 
     .repo-select {
       max-width: 180px;
       padding: 8px 10px;
-      border: 1px solid var(--dashboard-border);
+      border: 1px solid var(--theme-border);
       border-radius: 8px;
-      background: var(--dashboard-input-bg);
-      color: var(--dashboard-text);
+      background: var(--theme-input-bg);
+      color: var(--theme-text);
       font: inherit;
     }
 
     input::placeholder {
-      color: var(--dashboard-muted);
+      color: var(--theme-muted-text);
       opacity: 1;
     }
 
@@ -965,16 +742,16 @@ function renderHtml(appState, initialView = {}) {
 
     button {
       padding: 8px 10px;
-      border: 1px solid var(--dashboard-border);
+      border: 1px solid var(--theme-border);
       border-radius: 8px;
-      background: var(--dashboard-button-bg);
-      color: var(--dashboard-text);
+      background: var(--theme-button-bg);
+      color: var(--theme-text);
       font: inherit;
       cursor: pointer;
     }
 
     button:hover {
-      background: var(--dashboard-button-hover-bg);
+      background: var(--theme-button-hover-bg);
     }
 
     main {
@@ -1003,10 +780,10 @@ function renderHtml(appState, initialView = {}) {
     .present-controls button,
     .present-controls select {
       padding: 5px 7px;
-      border: 1px solid var(--dashboard-border);
+      border: 1px solid var(--theme-border);
       border-radius: 999px;
-      background: color-mix(in srgb, var(--dashboard-bg) 88%, transparent);
-      color: var(--dashboard-muted);
+      background: color-mix(in srgb, var(--theme-chrome) 88%, transparent);
+      color: var(--theme-muted-text);
       font-size: 12px;
       line-height: 16px;
       backdrop-filter: blur(8px);
@@ -1024,7 +801,7 @@ function renderHtml(appState, initialView = {}) {
 
     .page-indicator {
       min-width: 56px;
-      color: var(--dashboard-muted);
+      color: var(--theme-muted-text);
       font-size: 12px;
       text-align: center;
     }
@@ -1047,10 +824,10 @@ function renderHtml(appState, initialView = {}) {
       padding: 8px clamp(24px, 7vw, 96px) 64px;
       background: linear-gradient(
         to bottom,
-        var(--dashboard-bg) 0,
-        var(--dashboard-bg) var(--presentation-topbar-height, 36px),
-        var(--dashboard-surface) var(--presentation-topbar-height, 36px),
-        var(--dashboard-surface) 100%
+        var(--theme-chrome) 0,
+        var(--theme-chrome) var(--presentation-topbar-height, 36px),
+        var(--theme-surface) var(--presentation-topbar-height, 36px),
+        var(--theme-surface) 100%
       );
     }
 
@@ -1069,8 +846,8 @@ function renderHtml(appState, initialView = {}) {
     }
 
     .results {
-      border-right: 1px solid var(--dashboard-border);
-      background: var(--dashboard-bg);
+      border-right: 1px solid var(--theme-border);
+      background: var(--theme-chrome);
       overflow: auto;
       max-height: calc(100vh - 97px);
     }
@@ -1080,19 +857,19 @@ function renderHtml(appState, initialView = {}) {
       width: 100%;
       padding: 10px 12px;
       border: 0;
-      border-bottom: 1px solid var(--dashboard-border-muted);
+      border-bottom: 1px solid var(--theme-border-muted);
       border-radius: 0;
       background: transparent;
       text-align: left;
     }
 
     .result:hover {
-      background: var(--dashboard-hover-bg);
+      background: var(--theme-active-bg);
     }
 
     .result.active {
-      background: var(--dashboard-surface);
-      box-shadow: inset 3px 0 0 var(--dashboard-active-border);
+      background: var(--theme-surface);
+      box-shadow: inset 3px 0 0 var(--theme-active-border);
     }
 
     .result-title {
@@ -1104,7 +881,7 @@ function renderHtml(appState, initialView = {}) {
     .result-path,
     .meta,
     .empty {
-      color: var(--dashboard-muted);
+      color: var(--theme-muted-text);
       font-size: 12px;
       line-height: 18px;
     }
@@ -1114,7 +891,7 @@ function renderHtml(appState, initialView = {}) {
       max-height: 34px;
       margin-top: 4px;
       overflow: hidden;
-      color: var(--dashboard-muted);
+      color: var(--theme-muted-text);
       font-size: 12px;
       line-height: 17px;
       -webkit-box-orient: vertical;
@@ -1124,15 +901,15 @@ function renderHtml(appState, initialView = {}) {
     mark {
       padding: 0.05em 0.18em;
       border-radius: 3px;
-      background: var(--dashboard-mark-bg);
-      color: var(--dashboard-mark-text);
+      background: var(--theme-mark-bg);
+      color: var(--theme-mark-text);
       font-weight: var(--font-weight-semibold, 600);
     }
 
     .document {
       min-width: 0;
       padding: 18px 22px 32px;
-      background: var(--dashboard-surface);
+      background: var(--theme-surface);
       overflow: auto;
       max-height: calc(100vh - 97px);
     }
@@ -1170,7 +947,7 @@ function renderHtml(appState, initialView = {}) {
     .markdown hr {
       height: 0;
       border: 0;
-      border-top: 2px solid var(--dashboard-hr);
+      border-top: 2px solid var(--theme-active-border);
       background: transparent;
       margin: 24px 0;
     }
@@ -1178,8 +955,8 @@ function renderHtml(appState, initialView = {}) {
     .markdown code {
       font-family: var(--font-mono, "SFMono-Regular", Consolas, "Liberation Mono", monospace);
       font-size: var(--text-code-inline, 12px);
-      background: var(--dashboard-code-bg);
-      border: 1px solid var(--dashboard-code-border);
+      background: var(--theme-surface-muted);
+      border: 1px solid var(--theme-border-muted);
       border-radius: 4px;
       padding: 0.15em 0.3em;
     }
@@ -1188,8 +965,8 @@ function renderHtml(appState, initialView = {}) {
       padding: 12px;
       overflow: auto;
       border-radius: 8px;
-      background: var(--dashboard-code-bg);
-      border: 1px solid var(--dashboard-code-border);
+      background: var(--theme-surface-muted);
+      border: 1px solid var(--theme-border-muted);
     }
 
     .markdown pre code {
@@ -1219,15 +996,15 @@ function renderHtml(appState, initialView = {}) {
       height: 14px;
       margin: 0 7px 0 0;
       vertical-align: -2px;
-      accent-color: var(--dashboard-active-border);
+      accent-color: var(--theme-active-border);
     }
 
     .markdown .table-wrapper {
       max-width: 100%;
       overflow: visible;
-      border: 1px solid var(--dashboard-border);
+      border: 1px solid var(--theme-border);
       border-radius: 8px;
-      background: var(--dashboard-surface);
+      background: var(--theme-surface);
     }
 
     .markdown table {
@@ -1240,8 +1017,8 @@ function renderHtml(appState, initialView = {}) {
     .markdown th,
     .markdown td {
       padding: 8px 10px;
-      border-right: 1px solid var(--dashboard-border-muted);
-      border-bottom: 1px solid var(--dashboard-border-muted);
+      border-right: 1px solid var(--theme-border-muted);
+      border-bottom: 1px solid var(--theme-border-muted);
       text-align: left;
       vertical-align: top;
       overflow-wrap: anywhere;
@@ -1257,7 +1034,7 @@ function renderHtml(appState, initialView = {}) {
     }
 
     .markdown th {
-      background: var(--dashboard-button-bg);
+      background: var(--theme-button-bg);
       font-weight: var(--font-weight-semibold, 600);
     }
 
@@ -1276,9 +1053,9 @@ function renderHtml(appState, initialView = {}) {
       max-width: 100%;
       height: auto;
       margin: 12px 0;
-      border: 1px solid var(--dashboard-border);
+      border: 1px solid var(--theme-border);
       border-radius: 8px;
-      background: var(--dashboard-surface);
+      background: var(--theme-surface);
     }
 
     .svg-block,
@@ -1287,9 +1064,9 @@ function renderHtml(appState, initialView = {}) {
       margin: 12px 0;
       padding: 12px;
       overflow: auto;
-      border: 1px solid var(--dashboard-border);
+      border: 1px solid var(--theme-border);
       border-radius: 8px;
-      background: var(--dashboard-surface);
+      background: var(--theme-surface);
     }
 
     .svg-block svg,
@@ -1302,31 +1079,31 @@ function renderHtml(appState, initialView = {}) {
     .mermaid-error {
       margin: 12px 0;
       padding: 10px 12px;
-      border: 1px solid var(--dashboard-border);
+      border: 1px solid var(--theme-border);
       border-radius: 8px;
-      background: var(--dashboard-code-bg);
-      color: var(--dashboard-muted);
+      background: var(--theme-surface-muted);
+      color: var(--theme-muted-text);
       white-space: pre-wrap;
     }
 
     .markdown blockquote {
       padding-left: 12px;
-      border-left: 3px solid var(--dashboard-border);
-      color: var(--dashboard-muted);
+      border-left: 3px solid var(--theme-border);
+      color: var(--theme-muted-text);
     }
 
     .markdown .admonition {
       padding: 10px 12px;
-      border: 1px solid var(--dashboard-border);
-      border-left: 4px solid var(--dashboard-active-border);
+      border: 1px solid var(--theme-border);
+      border-left: 4px solid var(--theme-active-border);
       border-radius: 8px;
-      background: var(--dashboard-surface);
+      background: var(--theme-surface);
     }
 
     .markdown .admonition-title,
     .markdown summary.admonition-title {
       margin: 0 0 8px;
-      color: var(--dashboard-text);
+      color: var(--theme-text);
       font-weight: var(--font-weight-semibold, 600);
       cursor: default;
     }
@@ -1340,7 +1117,7 @@ function renderHtml(appState, initialView = {}) {
     }
 
     .markdown a {
-      color: var(--dashboard-link);
+      color: var(--theme-link);
     }
 
     .toolbar {
@@ -1355,10 +1132,10 @@ function renderHtml(appState, initialView = {}) {
       display: inline-block;
       margin: 4px 4px 0 0;
       padding: 2px 6px;
-      border: 1px solid var(--dashboard-border);
+      border: 1px solid var(--theme-border);
       border-radius: 999px;
-      background: var(--dashboard-surface);
-      color: var(--dashboard-muted);
+      background: var(--theme-surface);
+      color: var(--theme-muted-text);
       font-size: 12px;
     }
 
@@ -1370,7 +1147,7 @@ function renderHtml(appState, initialView = {}) {
       .results {
         max-height: 42vh;
         border-right: 0;
-        border-bottom: 1px solid var(--dashboard-border);
+        border-bottom: 1px solid var(--theme-border);
       }
 
       .document {
@@ -1381,7 +1158,7 @@ function renderHtml(appState, initialView = {}) {
 </head>
 <body>
   <div class="present-controls" aria-label="Presentation controls">
-    <button id="theme-toggle" type="button" title="Toggle light/dark theme">Dark</button>
+    <button id="theme-toggle" type="button" title="Cycle theme">Dark</button>
     <button id="present-toggle" type="button" aria-pressed="false" title="Toggle present mode">Present</button>
     <select id="paginate-level" title="Paginate by header level" aria-label="Paginate by header level">
       <option value="1">1</option>
@@ -1455,15 +1232,33 @@ function renderHtml(appState, initialView = {}) {
     let lastWheelPageTurn = 0;
     let mermaidModulePromise = null;
     const themeStorageKey = "kpe-doc-dashboard-theme";
-    const dashboardThemes = ["light", "sepia", "spring", "ocean", "forest", "autumn", "night"];
-    const dashboardThemeMeta = {
+    const themeIds = ["light", "sepia", "spring", "summer", "sunshower", "ocean", "forest", "autumn", "autumn-light", "coyote", "coyote-dark", "guinness", "night", "midnight", "pine", "obsidian"];
+    const themeAliases = {
+      dark: "ocean",
+      dawn: "light",
+      linen: "sepia",
+      mist: "coyote",
+      "coyote-medium": "coyote",
+      "summer-nights": "coyote",
+      "winter-nights": "midnight",
+    };
+    const themeMeta = {
       light: { label: "Light", mode: "light" },
       sepia: { label: "Sepia", mode: "light" },
       spring: { label: "Spring", mode: "light" },
+      summer: { label: "Summer", mode: "light" },
+      sunshower: { label: "Sunshower", mode: "light" },
       ocean: { label: "Ocean", mode: "dark" },
       forest: { label: "Forest", mode: "dark" },
       autumn: { label: "Autumn", mode: "dark" },
+      "autumn-light": { label: "Autumn Light", mode: "light" },
+      coyote: { label: "Coyote", mode: "medium" },
+      "coyote-dark": { label: "Coyote Dark", mode: "dark" },
+      guinness: { label: "Guinness", mode: "dark" },
       night: { label: "Night", mode: "dark" },
+      midnight: { label: "Midnight", mode: "dark" },
+      pine: { label: "Pine", mode: "dark" },
+      obsidian: { label: "Obsidian", mode: "dark" },
     };
     const wheelPageThreshold = 90;
     const wheelPageCooldownMs = 650;
@@ -1572,35 +1367,32 @@ function renderHtml(appState, initialView = {}) {
     }
 
     function normalizeTheme(theme) {
-      if (theme === "dark") {
-        return "ocean";
-      }
-      return dashboardThemes.includes(theme) ? theme : null;
+      const requestedTheme = String(theme || "").toLowerCase();
+      const aliasedTheme = themeAliases[requestedTheme] || requestedTheme;
+      return themeIds.includes(aliasedTheme) ? aliasedTheme : null;
     }
-
     function getNextTheme(theme) {
-      const currentIndex = dashboardThemes.indexOf(normalizeTheme(theme) || "light");
-      return dashboardThemes[(currentIndex + 1) % dashboardThemes.length];
+      const currentIndex = themeIds.indexOf(normalizeTheme(theme) || "light");
+      return themeIds[(currentIndex + 1) % themeIds.length];
     }
-
     function applyTheme(theme) {
       const normalizedTheme = normalizeTheme(theme) || "light";
-      const meta = dashboardThemeMeta[normalizedTheme];
+      const meta = themeMeta[normalizedTheme];
       const mode = meta.mode;
-      document.documentElement.setAttribute("data-color-mode", mode);
-      document.body.setAttribute("data-color-mode", mode);
+      const colorMode = mode === "dark" ? "dark" : "light";
+      document.documentElement.setAttribute("data-color-mode", colorMode);
+      document.body.setAttribute("data-color-mode", colorMode);
       document.documentElement.setAttribute("data-visual-mode", mode);
       document.body.setAttribute("data-visual-mode", mode);
-      document.documentElement.setAttribute("data-dashboard-theme", normalizedTheme);
-      document.body.setAttribute("data-dashboard-theme", normalizedTheme);
-      document.documentElement.style.colorScheme = mode;
+      document.documentElement.setAttribute("data-theme", normalizedTheme);
+      document.body.setAttribute("data-theme", normalizedTheme);
+      document.documentElement.style.colorScheme = colorMode;
       const nextTheme = getNextTheme(normalizedTheme);
       themeToggle.textContent = meta.label;
-      themeToggle.title = "Next theme: " + dashboardThemeMeta[nextTheme].label;
+      themeToggle.title = "Next theme: " + themeMeta[nextTheme].label;
       themeToggle.setAttribute("aria-label", themeToggle.title);
       storeTheme(normalizedTheme);
     }
-
     function isExternalAsset(value) {
       return /^(?:https?:|data:image\\/|blob:|#)/i.test(String(value || "").trim());
     }
@@ -2589,7 +2381,7 @@ function renderHtml(appState, initialView = {}) {
     });
 
     themeToggle.addEventListener("click", async () => {
-      const currentTheme = document.documentElement.getAttribute("data-dashboard-theme") || getInitialTheme();
+      const currentTheme = document.documentElement.getAttribute("data-theme") || getInitialTheme();
       applyTheme(getNextTheme(currentTheme));
       if (currentDocument) {
         await renderCurrentDocument();
@@ -2671,6 +2463,16 @@ async function handleRequest(appState, req, res) {
 
         if (req.method === "GET" && url.pathname === "/") {
             sendHtml(res, renderHtml(appState));
+            return;
+        }
+
+        if (req.method === "GET" && url.pathname === "/theme.css") {
+            await sendFile(res, THEME_CSS_PATH);
+            return;
+        }
+
+        if (req.method === "GET" && url.pathname === "/theme.json") {
+            await sendFile(res, THEME_JSON_PATH);
             return;
         }
 
