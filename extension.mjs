@@ -786,7 +786,7 @@ function renderHtml(appState, initialView = {}) {
     :root[data-dashboard-theme="sepia"],
     body[data-dashboard-theme="sepia"] {
       color-scheme: light;
-      --dashboard-bg: #f4eee3;
+      --dashboard-bg: #e8e2d8;
       --dashboard-text: #3f3424;
       --dashboard-muted: #7a6a58;
       --dashboard-border: #d8cab2;
