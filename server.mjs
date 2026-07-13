@@ -668,18 +668,18 @@ function renderHtml(appState, initialView = {}) {
   <style>
     :root {
       color-scheme: light dark;
-      --dashboard-bg: #e9e6df;
+      --dashboard-bg: #d6d6d6;
       --dashboard-text: #111827;
       --dashboard-muted: #6f6a61;
       --dashboard-border: #d1cbc0;
       --dashboard-border-muted: #ddd7cc;
       --dashboard-hr: #9c9486;
-      --dashboard-surface: #f1eee7;
+      --dashboard-surface: #f2f2f2;
       --dashboard-input-bg: #f6f3ec;
       --dashboard-button-bg: #ddd8ce;
       --dashboard-button-hover-bg: #d4cec2;
       --dashboard-hover-bg: rgba(112, 100, 82, 0.12);
-      --dashboard-active-bg: #f1eee7;
+      --dashboard-active-bg: #f2f2f2;
       --dashboard-active-border: #8a8172;
       --dashboard-code-bg: #e6e2d8;
       --dashboard-code-border: #d1cbc0;
@@ -738,18 +738,18 @@ function renderHtml(appState, initialView = {}) {
     :root[data-dashboard-theme="light"],
     body[data-dashboard-theme="light"] {
       color-scheme: light;
-      --dashboard-bg: #e9e6df;
+      --dashboard-bg: #d6d6d6;
       --dashboard-text: #111827;
       --dashboard-muted: #6f6a61;
       --dashboard-border: #d1cbc0;
       --dashboard-border-muted: #ddd7cc;
       --dashboard-hr: #9c9486;
-      --dashboard-surface: #f1eee7;
+      --dashboard-surface: #f2f2f2;
       --dashboard-input-bg: #f6f3ec;
       --dashboard-button-bg: #ddd8ce;
       --dashboard-button-hover-bg: #d4cec2;
       --dashboard-hover-bg: rgba(112, 100, 82, 0.12);
-      --dashboard-active-bg: #f1eee7;
+      --dashboard-active-bg: #f2f2f2;
       --dashboard-active-border: #8a8172;
       --dashboard-code-bg: #e6e2d8;
       --dashboard-code-border: #d1cbc0;
