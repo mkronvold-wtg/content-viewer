@@ -1048,8 +1048,8 @@ function renderHtml(appState, initialView = {}) {
       background: linear-gradient(
         to bottom,
         var(--dashboard-bg) 0,
-        var(--dashboard-bg) var(--presentation-topbar-height, 72px),
-        var(--dashboard-surface) var(--presentation-topbar-height, 72px),
+        var(--dashboard-bg) var(--presentation-topbar-height, 36px),
+        var(--dashboard-surface) var(--presentation-topbar-height, 36px),
         var(--dashboard-surface) 100%
       );
     }
@@ -2377,16 +2377,7 @@ function renderHtml(appState, initialView = {}) {
         return;
       }
 
-      const heading = docContent.querySelector("h1, h2, h3, h4, h5, h6") || docContent.firstElementChild;
-      if (!heading) {
-        documentPanel.style.setProperty("--presentation-topbar-height", "72px");
-        return;
-      }
-
-      const panelRect = documentPanel.getBoundingClientRect();
-      const headingRect = heading.getBoundingClientRect();
-      const height = Math.max(72, Math.ceil(headingRect.bottom - panelRect.top + documentPanel.scrollTop + 16));
-      documentPanel.style.setProperty("--presentation-topbar-height", height + "px");
+      documentPanel.style.setProperty("--presentation-topbar-height", "36px");
     }
 
     async function changePresentationPage(direction) {
