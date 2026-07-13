@@ -3,6 +3,8 @@
   "tokens": [
     "bg",
     "chrome",
+    "chromeText",
+    "chromeMutedText",
     "surface",
     "surfaceMuted",
     "inputBg",
@@ -49,6 +51,8 @@
     "light": {
       "bg": "#f4f7fb",
       "chrome": "#e8edf4",
+      "chromeText": "#172033",
+      "chromeMutedText": "#5e6b82",
       "surface": "#ffffff",
       "surfaceMuted": "#f1f5f9",
       "inputBg": "#ffffff",
@@ -94,6 +98,8 @@
     "medium": {
       "bg": "#b7a58e",
       "chrome": "#c4b097",
+      "chromeText": "#2d2318",
+      "chromeMutedText": "#645443",
       "surface": "#dcc8aa",
       "surfaceMuted": "#e7d7bf",
       "inputBg": "#f3e6d2",
@@ -139,6 +145,8 @@
     "dark": {
       "bg": "#07111f",
       "chrome": "#0b1b2f",
+      "chromeText": "#edf5ff",
+      "chromeMutedText": "#a5bbda",
       "surface": "#0f233d",
       "surfaceMuted": "#112845",
       "inputBg": "#0c1c31",
@@ -208,6 +216,8 @@
       "colors": {
         "bg": "#e8e2d8",
         "chrome": "#e8e2d8",
+        "chromeText": "#3f3424",
+        "chromeMutedText": "#7b6a55",
         "surface": "#fbf6ed",
         "surfaceMuted": "#f1e8d8",
         "inputBg": "#fffaf2",
@@ -236,6 +246,8 @@
       "colors": {
         "bg": "#c8d8e2",
         "chrome": "#c8d8e2",
+        "chromeText": "#141c24",
+        "chromeMutedText": "#3f6b73",
         "surface": "#d6e5d0",
         "surfaceMuted": "#c7dcc1",
         "inputBg": "rgba(255, 255, 255, 0.95)",
@@ -264,6 +276,8 @@
       "colors": {
         "bg": "#f7fee7",
         "chrome": "#14532d",
+        "chromeText": "#f8fafc",
+        "chromeMutedText": "#bbf7d0",
         "surface": "#fbfff7",
         "surfaceMuted": "#dcfce7",
         "inputBg": "#fffffc",
@@ -297,6 +311,8 @@
       "colors": {
         "bg": "#e2f2f7",
         "chrome": "#ecf7fb",
+        "chromeText": "#183142",
+        "chromeMutedText": "#5d7684",
         "surface": "#f8fcfe",
         "surfaceMuted": "#fbfef1",
         "inputBg": "#ffffff",
@@ -321,6 +337,8 @@
       "colors": {
         "bg": "#07111f",
         "chrome": "#07111f",
+        "chromeText": "#e8f1ff",
+        "chromeMutedText": "#a9bad4",
         "surface": "#0c1628",
         "surfaceMuted": "#111d32",
         "inputBg": "#0a1526",
@@ -345,6 +363,8 @@
       "colors": {
         "bg": "#06110d",
         "chrome": "#06110d",
+        "chromeText": "#e3f6eb",
+        "chromeMutedText": "#a4cfc1",
         "surface": "#17241f",
         "surfaceMuted": "#1d3028",
         "inputBg": "#0d1d19",
@@ -369,6 +389,8 @@
       "colors": {
         "bg": "#42261b",
         "chrome": "#42261b",
+        "chromeText": "#f8e7d2",
+        "chromeMutedText": "#e4c3a4",
         "surface": "#5f3a28",
         "surfaceMuted": "#70462f",
         "inputBg": "#4d2f21",
@@ -393,6 +415,8 @@
       "colors": {
         "bg": "#fff7ed",
         "chrome": "#44230f",
+        "chromeText": "#fff7ed",
+        "chromeMutedText": "#fed7aa",
         "surface": "#fff8ef",
         "surfaceMuted": "#ffedd5",
         "inputBg": "#fffbeb",
@@ -453,6 +477,8 @@
       "colors": {
         "bg": "#201711",
         "chrome": "#2a1e16",
+        "chromeText": "#f3e6d4",
+        "chromeMutedText": "#ceb698",
         "surface": "#38291f",
         "surfaceMuted": "#463528",
         "inputBg": "#2f2319",
@@ -480,6 +506,8 @@
       "colors": {
         "bg": "#090603",
         "chrome": "#15100c",
+        "chromeText": "#f8eddc",
+        "chromeMutedText": "#d1b79a",
         "surface": "#201813",
         "surfaceMuted": "#2a2019",
         "inputBg": "#17110d",
@@ -507,6 +535,8 @@
       "colors": {
         "bg": "#08090b",
         "chrome": "#08090b",
+        "chromeText": "#edf0f4",
+        "chromeMutedText": "#a8a8b5",
         "surface": "#111317",
         "surfaceMuted": "#1b1d23",
         "inputBg": "#121216",
@@ -555,6 +585,8 @@
       "colors": {
         "bg": "#081512",
         "chrome": "#0d1d19",
+        "chromeText": "#eafaf2",
+        "chromeMutedText": "#a4cfc1",
         "surface": "#112621",
         "surfaceMuted": "#153129",
         "inputBg": "#0d1d19",
@@ -579,6 +611,8 @@
       "colors": {
         "bg": "#09090b",
         "chrome": "#111114",
+        "chromeText": "#f3f3f5",
+        "chromeMutedText": "#a8a8b5",
         "surface": "#16161a",
         "surfaceMuted": "#1c1c21",
         "inputBg": "#121216",

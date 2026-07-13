@@ -695,6 +695,11 @@ function renderHtml(appState, initialView = {}) {
       padding: 12px;
       border-bottom: 1px solid var(--theme-border);
       background: var(--theme-chrome);
+      color: var(--theme-chrome-text);
+    }
+
+    header .meta {
+      color: var(--theme-chrome-muted-text);
     }
 
     h1 {
@@ -783,7 +788,7 @@ function renderHtml(appState, initialView = {}) {
       border: 1px solid var(--theme-border);
       border-radius: 999px;
       background: color-mix(in srgb, var(--theme-chrome) 88%, transparent);
-      color: var(--theme-muted-text);
+      color: var(--theme-chrome-muted-text);
       font-size: 12px;
       line-height: 16px;
       backdrop-filter: blur(8px);
@@ -801,7 +806,7 @@ function renderHtml(appState, initialView = {}) {
 
     .page-indicator {
       min-width: 56px;
-      color: var(--theme-muted-text);
+      color: var(--theme-chrome-muted-text);
       font-size: 12px;
       text-align: center;
     }
@@ -838,6 +843,7 @@ function renderHtml(appState, initialView = {}) {
 
     body.presenting .markdown > :first-child {
       margin-top: 0;
+      color: var(--theme-chrome-text);
     }
 
     body.presenting .present-controls select,
@@ -848,6 +854,7 @@ function renderHtml(appState, initialView = {}) {
     .results {
       border-right: 1px solid var(--theme-border);
       background: var(--theme-chrome);
+      color: var(--theme-chrome-text);
       overflow: auto;
       max-height: calc(100vh - 97px);
     }
@@ -860,15 +867,18 @@ function renderHtml(appState, initialView = {}) {
       border-bottom: 1px solid var(--theme-border-muted);
       border-radius: 0;
       background: transparent;
+      color: var(--theme-chrome-text);
       text-align: left;
     }
 
     .result:hover {
       background: var(--theme-active-bg);
+      color: var(--theme-text);
     }
 
     .result.active {
       background: var(--theme-surface);
+      color: var(--theme-text);
       box-shadow: inset 3px 0 0 var(--theme-active-border);
     }
 
@@ -876,6 +886,10 @@ function renderHtml(appState, initialView = {}) {
       display: block;
       font-weight: var(--font-weight-semibold, 600);
       margin-bottom: 2px;
+    }
+
+    .results .result-path {
+      color: var(--theme-chrome-muted-text);
     }
 
     .result-path,
@@ -891,11 +905,18 @@ function renderHtml(appState, initialView = {}) {
       max-height: 34px;
       margin-top: 4px;
       overflow: hidden;
-      color: var(--theme-muted-text);
+      color: var(--theme-chrome-muted-text);
       font-size: 12px;
       line-height: 17px;
       -webkit-box-orient: vertical;
       -webkit-line-clamp: 2;
+    }
+
+    .result:hover .result-path,
+    .result:hover .snippet,
+    .result.active .result-path,
+    .result.active .snippet {
+      color: var(--theme-muted-text);
     }
 
     mark {

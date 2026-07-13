@@ -6,6 +6,8 @@
   color-scheme: light;
   --theme-bg: #f4f7fb;
   --theme-chrome: #d6d6d6;
+  --theme-chrome-text: #172033;
+  --theme-chrome-muted-text: #5e6b82;
   --theme-surface: #f2f2f2;
   --theme-surface-muted: #e5e5e5;
   --theme-input-bg: #ffffff;
@@ -54,6 +56,8 @@
   color-scheme: light;
   --theme-bg: #e8e2d8;
   --theme-chrome: #e8e2d8;
+  --theme-chrome-text: #3f3424;
+  --theme-chrome-muted-text: #7b6a55;
   --theme-surface: #fbf6ed;
   --theme-surface-muted: #f1e8d8;
   --theme-input-bg: #fffaf2;
@@ -102,6 +106,8 @@
   color-scheme: light;
   --theme-bg: #c8d8e2;
   --theme-chrome: #c8d8e2;
+  --theme-chrome-text: #141c24;
+  --theme-chrome-muted-text: #3f6b73;
   --theme-surface: #d6e5d0;
   --theme-surface-muted: #c7dcc1;
   --theme-input-bg: rgba(255, 255, 255, 0.95);
@@ -150,6 +156,8 @@
   color-scheme: light;
   --theme-bg: #f7fee7;
   --theme-chrome: #14532d;
+  --theme-chrome-text: #f8fafc;
+  --theme-chrome-muted-text: #bbf7d0;
   --theme-surface: #fbfff7;
   --theme-surface-muted: #dcfce7;
   --theme-input-bg: #fffffc;
@@ -198,6 +206,8 @@
   color-scheme: light;
   --theme-bg: #e2f2f7;
   --theme-chrome: #ecf7fb;
+  --theme-chrome-text: #183142;
+  --theme-chrome-muted-text: #5d7684;
   --theme-surface: #f8fcfe;
   --theme-surface-muted: #fbfef1;
   --theme-input-bg: #ffffff;
@@ -246,6 +256,8 @@
   color-scheme: dark;
   --theme-bg: #07111f;
   --theme-chrome: #07111f;
+  --theme-chrome-text: #e8f1ff;
+  --theme-chrome-muted-text: #a9bad4;
   --theme-surface: #0c1628;
   --theme-surface-muted: #111d32;
   --theme-input-bg: #0a1526;
@@ -294,6 +306,8 @@
   color-scheme: dark;
   --theme-bg: #06110d;
   --theme-chrome: #06110d;
+  --theme-chrome-text: #e3f6eb;
+  --theme-chrome-muted-text: #a4cfc1;
   --theme-surface: #17241f;
   --theme-surface-muted: #1d3028;
   --theme-input-bg: #0d1d19;
@@ -342,6 +356,8 @@
   color-scheme: dark;
   --theme-bg: #42261b;
   --theme-chrome: #42261b;
+  --theme-chrome-text: #f8e7d2;
+  --theme-chrome-muted-text: #e4c3a4;
   --theme-surface: #5f3a28;
   --theme-surface-muted: #70462f;
   --theme-input-bg: #4d2f21;
@@ -390,6 +406,8 @@
   color-scheme: light;
   --theme-bg: #fff7ed;
   --theme-chrome: #44230f;
+  --theme-chrome-text: #fff7ed;
+  --theme-chrome-muted-text: #fed7aa;
   --theme-surface: #fff8ef;
   --theme-surface-muted: #ffedd5;
   --theme-input-bg: #fffbeb;
@@ -438,6 +456,8 @@
   color-scheme: light;
   --theme-bg: #b7a58e;
   --theme-chrome: #c4b097;
+  --theme-chrome-text: #2d2318;
+  --theme-chrome-muted-text: #645443;
   --theme-surface: #dcc8aa;
   --theme-surface-muted: #e7d7bf;
   --theme-input-bg: #f3e6d2;
@@ -486,6 +506,8 @@
   color-scheme: dark;
   --theme-bg: #201711;
   --theme-chrome: #2a1e16;
+  --theme-chrome-text: #f3e6d4;
+  --theme-chrome-muted-text: #ceb698;
   --theme-surface: #38291f;
   --theme-surface-muted: #463528;
   --theme-input-bg: #2f2319;
@@ -534,6 +556,8 @@
   color-scheme: dark;
   --theme-bg: #090603;
   --theme-chrome: #15100c;
+  --theme-chrome-text: #f8eddc;
+  --theme-chrome-muted-text: #d1b79a;
   --theme-surface: #201813;
   --theme-surface-muted: #2a2019;
   --theme-input-bg: #17110d;
@@ -582,6 +606,8 @@
   color-scheme: dark;
   --theme-bg: #08090b;
   --theme-chrome: #08090b;
+  --theme-chrome-text: #edf0f4;
+  --theme-chrome-muted-text: #a8a8b5;
   --theme-surface: #111317;
   --theme-surface-muted: #1b1d23;
   --theme-input-bg: #121216;
@@ -630,6 +656,8 @@
   color-scheme: dark;
   --theme-bg: #071321;
   --theme-chrome: #0b1b2f;
+  --theme-chrome-text: #edf5ff;
+  --theme-chrome-muted-text: #a5bbda;
   --theme-surface: #0f233d;
   --theme-surface-muted: #112845;
   --theme-input-bg: #0c1c31;
@@ -678,6 +706,8 @@
   color-scheme: dark;
   --theme-bg: #081512;
   --theme-chrome: #0d1d19;
+  --theme-chrome-text: #eafaf2;
+  --theme-chrome-muted-text: #a4cfc1;
   --theme-surface: #112621;
   --theme-surface-muted: #153129;
   --theme-input-bg: #0d1d19;
@@ -726,6 +756,8 @@
   color-scheme: dark;
   --theme-bg: #09090b;
   --theme-chrome: #111114;
+  --theme-chrome-text: #f3f3f5;
+  --theme-chrome-muted-text: #a8a8b5;
   --theme-surface: #16161a;
   --theme-surface-muted: #1c1c21;
   --theme-input-bg: #121216;
@@ -774,6 +806,8 @@
   color-scheme: dark;
   --theme-bg: #07111f;
   --theme-chrome: #07111f;
+  --theme-chrome-text: #e8f1ff;
+  --theme-chrome-muted-text: #a9bad4;
   --theme-surface: #0c1628;
   --theme-surface-muted: #111d32;
   --theme-input-bg: #0a1526;
@@ -822,6 +856,8 @@
   color-scheme: light;
   --theme-bg: #f4f7fb;
   --theme-chrome: #d6d6d6;
+  --theme-chrome-text: #172033;
+  --theme-chrome-muted-text: #5e6b82;
   --theme-surface: #f2f2f2;
   --theme-surface-muted: #e5e5e5;
   --theme-input-bg: #ffffff;
@@ -870,6 +906,8 @@
   color-scheme: light;
   --theme-bg: #e8e2d8;
   --theme-chrome: #e8e2d8;
+  --theme-chrome-text: #3f3424;
+  --theme-chrome-muted-text: #7b6a55;
   --theme-surface: #fbf6ed;
   --theme-surface-muted: #f1e8d8;
   --theme-input-bg: #fffaf2;
@@ -918,6 +956,8 @@
   color-scheme: light;
   --theme-bg: #b7a58e;
   --theme-chrome: #c4b097;
+  --theme-chrome-text: #2d2318;
+  --theme-chrome-muted-text: #645443;
   --theme-surface: #dcc8aa;
   --theme-surface-muted: #e7d7bf;
   --theme-input-bg: #f3e6d2;
@@ -966,6 +1006,8 @@
   color-scheme: light;
   --theme-bg: #b7a58e;
   --theme-chrome: #c4b097;
+  --theme-chrome-text: #2d2318;
+  --theme-chrome-muted-text: #645443;
   --theme-surface: #dcc8aa;
   --theme-surface-muted: #e7d7bf;
   --theme-input-bg: #f3e6d2;
@@ -1014,6 +1056,8 @@
   color-scheme: light;
   --theme-bg: #b7a58e;
   --theme-chrome: #c4b097;
+  --theme-chrome-text: #2d2318;
+  --theme-chrome-muted-text: #645443;
   --theme-surface: #dcc8aa;
   --theme-surface-muted: #e7d7bf;
   --theme-input-bg: #f3e6d2;
@@ -1062,6 +1106,8 @@
   color-scheme: dark;
   --theme-bg: #071321;
   --theme-chrome: #0b1b2f;
+  --theme-chrome-text: #edf5ff;
+  --theme-chrome-muted-text: #a5bbda;
   --theme-surface: #0f233d;
   --theme-surface-muted: #112845;
   --theme-input-bg: #0c1c31;
