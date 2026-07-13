@@ -1045,6 +1045,13 @@ function renderHtml(appState, initialView = {}) {
       max-height: none;
       min-height: 100vh;
       padding: 8px clamp(24px, 7vw, 96px) 64px;
+      background: linear-gradient(
+        to bottom,
+        var(--dashboard-bg) 0,
+        var(--dashboard-bg) var(--presentation-topbar-height, 72px),
+        var(--dashboard-surface) var(--presentation-topbar-height, 72px),
+        var(--dashboard-surface) 100%
+      );
     }
 
     body.presenting .markdown {
@@ -1423,6 +1430,7 @@ function renderHtml(appState, initialView = {}) {
     const docPath = document.getElementById("doc-path");
     const docTags = document.getElementById("doc-tags");
     const docContent = document.getElementById("doc-content");
+    const documentPanel = document.querySelector(".document");
     const themeToggle = document.getElementById("theme-toggle");
     const presentToggle = document.getElementById("present-toggle");
     const paginateLevel = document.getElementById("paginate-level");
@@ -2363,6 +2371,24 @@ function renderHtml(appState, initialView = {}) {
       nextPage.disabled = currentPageIndex >= currentPages.length - 1;
     }
 
+    function updatePresentationTopbar() {
+      if (!documentPanel || !document.body.classList.contains("presenting")) {
+        documentPanel?.style.removeProperty("--presentation-topbar-height");
+        return;
+      }
+
+      const heading = docContent.querySelector("h1, h2, h3, h4, h5, h6") || docContent.firstElementChild;
+      if (!heading) {
+        documentPanel.style.setProperty("--presentation-topbar-height", "72px");
+        return;
+      }
+
+      const panelRect = documentPanel.getBoundingClientRect();
+      const headingRect = heading.getBoundingClientRect();
+      const height = Math.max(72, Math.ceil(headingRect.bottom - panelRect.top + documentPanel.scrollTop + 16));
+      documentPanel.style.setProperty("--presentation-topbar-height", height + "px");
+    }
+
     async function changePresentationPage(direction) {
       const nextIndex = Math.min(currentPages.length - 1, Math.max(0, currentPageIndex + direction));
       if (nextIndex === currentPageIndex) {
@@ -2391,6 +2417,7 @@ function renderHtml(appState, initialView = {}) {
       docContent.innerHTML = renderMarkdown(currentPages[currentPageIndex].content, currentDocument.path);
       await renderMermaidDiagrams();
       updatePresentationControls();
+      updatePresentationTopbar();
     }
 
     async function requestJson(url, options) {
