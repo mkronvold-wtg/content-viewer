@@ -668,46 +668,46 @@ function renderHtml(appState, initialView = {}) {
   <style>
     :root {
       color-scheme: light dark;
-      --dashboard-bg: #d8dde5;
-      --dashboard-text: var(--text-color-default, #1f2328);
-      --dashboard-muted: var(--text-color-muted, #57606a);
-      --dashboard-border: var(--border-color-default, #c6ccd3);
-      --dashboard-border-muted: #cdd3d9;
-      --dashboard-hr: #858e97;
-      --dashboard-surface: #e8edf3;
-      --dashboard-input-bg: #f0f4f8;
-      --dashboard-button-bg: #e8edf3;
-      --dashboard-button-hover-bg: #e0e7ef;
+      --dashboard-bg: #f5f7fb;
+      --dashboard-text: #0f172a;
+      --dashboard-muted: #64748b;
+      --dashboard-border: #dbe2ea;
+      --dashboard-border-muted: #e2e8f0;
+      --dashboard-hr: #94a3b8;
+      --dashboard-surface: #ffffff;
+      --dashboard-input-bg: #ffffff;
+      --dashboard-button-bg: #eef2ff;
+      --dashboard-button-hover-bg: #e0e7ff;
       --dashboard-hover-bg: rgba(9, 105, 218, 0.08);
-      --dashboard-active-bg: #d2e8f2;
-      --dashboard-active-border: #0969da;
-      --dashboard-code-bg: #e8edf3;
-      --dashboard-code-border: #c6ccd3;
-      --dashboard-mark-bg: #f2ecbb;
-      --dashboard-mark-text: #24292f;
-      --dashboard-link: #0969da;
+      --dashboard-active-bg: #eef2ff;
+      --dashboard-active-border: #4338ca;
+      --dashboard-code-bg: #f8fafc;
+      --dashboard-code-border: #e2e8f0;
+      --dashboard-mark-bg: #fef3c7;
+      --dashboard-mark-text: #92400e;
+      --dashboard-link: #4338ca;
     }
 
     @media (prefers-color-scheme: dark) {
       :root:not([data-color-mode="light"]) {
-        --dashboard-bg: #2e343b;
-        --dashboard-text: var(--text-color-default, #e6edf3);
-        --dashboard-muted: var(--text-color-muted, #8b949e);
-        --dashboard-border: #4b5056;
-        --dashboard-border-muted: #3f4349;
-        --dashboard-hr: #7d848d;
-        --dashboard-surface: #353d45;
-        --dashboard-input-bg: #353d45;
-        --dashboard-button-bg: #3d4650;
-        --dashboard-button-hover-bg: #48535f;
-        --dashboard-hover-bg: rgba(56, 139, 253, 0.14);
-        --dashboard-active-bg: rgba(56, 139, 253, 0.22);
-        --dashboard-active-border: #58a6ff;
-        --dashboard-code-bg: #353d45;
-        --dashboard-code-border: #4b5056;
-        --dashboard-mark-bg: rgba(187, 128, 9, 0.38);
-        --dashboard-mark-text: #ffd33d;
-        --dashboard-link: #58a6ff;
+        --dashboard-bg: #07111f;
+        --dashboard-text: #e8f1ff;
+        --dashboard-muted: #93a8c5;
+        --dashboard-border: #2b4262;
+        --dashboard-border-muted: #395272;
+        --dashboard-hr: #8fb8ff;
+        --dashboard-surface: #0c1628;
+        --dashboard-input-bg: #08101c;
+        --dashboard-button-bg: #14243d;
+        --dashboard-button-hover-bg: #1a2942;
+        --dashboard-hover-bg: rgba(94, 167, 255, 0.14);
+        --dashboard-active-bg: #14243d;
+        --dashboard-active-border: #5ea7ff;
+        --dashboard-code-bg: #15253d;
+        --dashboard-code-border: #395272;
+        --dashboard-mark-bg: #433318;
+        --dashboard-mark-text: #ffd96a;
+        --dashboard-link: #9dc4ff;
       }
     }
 
@@ -715,70 +715,187 @@ function renderHtml(appState, initialView = {}) {
     :root[data-visual-mode="dark"],
     body[data-color-mode="dark"],
     body[data-visual-mode="dark"] {
-      --dashboard-bg: #2e343b;
-      --dashboard-text: var(--text-color-default, #e6edf3);
-      --dashboard-muted: var(--text-color-muted, #8b949e);
-      --dashboard-border: #4b5056;
-      --dashboard-border-muted: #3f4349;
-      --dashboard-hr: #7d848d;
-      --dashboard-surface: #353d45;
-      --dashboard-input-bg: #353d45;
-      --dashboard-button-bg: #3d4650;
-      --dashboard-button-hover-bg: #48535f;
-      --dashboard-hover-bg: rgba(56, 139, 253, 0.14);
-      --dashboard-active-bg: rgba(56, 139, 253, 0.22);
-      --dashboard-active-border: #58a6ff;
-      --dashboard-code-bg: #353d45;
-      --dashboard-code-border: #4b5056;
-      --dashboard-mark-bg: rgba(187, 128, 9, 0.38);
-      --dashboard-mark-text: #ffd33d;
-      --dashboard-link: #58a6ff;
+      --dashboard-bg: #07111f;
+      --dashboard-text: #e8f1ff;
+      --dashboard-muted: #93a8c5;
+      --dashboard-border: #2b4262;
+      --dashboard-border-muted: #395272;
+      --dashboard-hr: #8fb8ff;
+      --dashboard-surface: #0c1628;
+      --dashboard-input-bg: #08101c;
+      --dashboard-button-bg: #14243d;
+      --dashboard-button-hover-bg: #1a2942;
+      --dashboard-hover-bg: rgba(94, 167, 255, 0.14);
+      --dashboard-active-bg: #14243d;
+      --dashboard-active-border: #5ea7ff;
+      --dashboard-code-bg: #15253d;
+      --dashboard-code-border: #395272;
+      --dashboard-mark-bg: #433318;
+      --dashboard-mark-text: #ffd96a;
+      --dashboard-link: #9dc4ff;
     }
 
     :root[data-dashboard-theme="light"],
     body[data-dashboard-theme="light"] {
       color-scheme: light;
-      --dashboard-bg: #d8dde5;
-      --dashboard-text: #1f2328;
-      --dashboard-muted: #57606a;
-      --dashboard-border: #c6ccd3;
-      --dashboard-border-muted: #cdd3d9;
-      --dashboard-hr: #858e97;
-      --dashboard-surface: #e8edf3;
-      --dashboard-input-bg: #f0f4f8;
-      --dashboard-button-bg: #e8edf3;
-      --dashboard-button-hover-bg: #e0e7ef;
+      --dashboard-bg: #f5f7fb;
+      --dashboard-text: #0f172a;
+      --dashboard-muted: #64748b;
+      --dashboard-border: #dbe2ea;
+      --dashboard-border-muted: #e2e8f0;
+      --dashboard-hr: #94a3b8;
+      --dashboard-surface: #ffffff;
+      --dashboard-input-bg: #ffffff;
+      --dashboard-button-bg: #eef2ff;
+      --dashboard-button-hover-bg: #e0e7ff;
       --dashboard-hover-bg: rgba(9, 105, 218, 0.08);
-      --dashboard-active-bg: #d2e8f2;
-      --dashboard-active-border: #0969da;
-      --dashboard-code-bg: #e8edf3;
-      --dashboard-code-border: #c6ccd3;
-      --dashboard-mark-bg: #f2ecbb;
-      --dashboard-mark-text: #24292f;
-      --dashboard-link: #0969da;
+      --dashboard-active-bg: #eef2ff;
+      --dashboard-active-border: #4338ca;
+      --dashboard-code-bg: #f8fafc;
+      --dashboard-code-border: #e2e8f0;
+      --dashboard-mark-bg: #fef3c7;
+      --dashboard-mark-text: #92400e;
+      --dashboard-link: #4338ca;
     }
 
     :root[data-dashboard-theme="dark"],
-    body[data-dashboard-theme="dark"] {
+    :root[data-dashboard-theme="ocean"],
+    body[data-dashboard-theme="dark"],
+    body[data-dashboard-theme="ocean"] {
       color-scheme: dark;
-      --dashboard-bg: #2e343b;
-      --dashboard-text: #e6edf3;
-      --dashboard-muted: #8b949e;
-      --dashboard-border: #4b5056;
-      --dashboard-border-muted: #3f4349;
-      --dashboard-hr: #7d848d;
-      --dashboard-surface: #353d45;
-      --dashboard-input-bg: #353d45;
-      --dashboard-button-bg: #3d4650;
-      --dashboard-button-hover-bg: #48535f;
-      --dashboard-hover-bg: rgba(56, 139, 253, 0.14);
-      --dashboard-active-bg: rgba(56, 139, 253, 0.22);
-      --dashboard-active-border: #58a6ff;
-      --dashboard-code-bg: #353d45;
-      --dashboard-code-border: #4b5056;
-      --dashboard-mark-bg: rgba(187, 128, 9, 0.38);
-      --dashboard-mark-text: #ffd33d;
-      --dashboard-link: #58a6ff;
+      --dashboard-bg: #07111f;
+      --dashboard-text: #e8f1ff;
+      --dashboard-muted: #93a8c5;
+      --dashboard-border: #2b4262;
+      --dashboard-border-muted: #395272;
+      --dashboard-hr: #8fb8ff;
+      --dashboard-surface: #0c1628;
+      --dashboard-input-bg: #08101c;
+      --dashboard-button-bg: #14243d;
+      --dashboard-button-hover-bg: #1a2942;
+      --dashboard-hover-bg: rgba(94, 167, 255, 0.14);
+      --dashboard-active-bg: #14243d;
+      --dashboard-active-border: #5ea7ff;
+      --dashboard-code-bg: #15253d;
+      --dashboard-code-border: #395272;
+      --dashboard-mark-bg: #433318;
+      --dashboard-mark-text: #ffd96a;
+      --dashboard-link: #9dc4ff;
+    }
+
+    :root[data-dashboard-theme="sepia"],
+    body[data-dashboard-theme="sepia"] {
+      color-scheme: light;
+      --dashboard-bg: #f4eee3;
+      --dashboard-text: #3f3424;
+      --dashboard-muted: #7a6a58;
+      --dashboard-border: #d8cab2;
+      --dashboard-border-muted: #e2d7c4;
+      --dashboard-hr: #a48b6b;
+      --dashboard-surface: #fbf6ed;
+      --dashboard-input-bg: #fffaf2;
+      --dashboard-button-bg: #ede2d0;
+      --dashboard-button-hover-bg: #e2d7c4;
+      --dashboard-hover-bg: rgba(140, 90, 60, 0.12);
+      --dashboard-active-bg: #ede2d0;
+      --dashboard-active-border: #8c5a3c;
+      --dashboard-code-bg: #efe6d7;
+      --dashboard-code-border: #e2d7c4;
+      --dashboard-mark-bg: #f6e1b4;
+      --dashboard-mark-text: #7a4a11;
+      --dashboard-link: #8c5a3c;
+    }
+
+    :root[data-dashboard-theme="spring"],
+    body[data-dashboard-theme="spring"] {
+      color-scheme: light;
+      --dashboard-bg: #f3faf6;
+      --dashboard-text: #18212a;
+      --dashboard-muted: #637784;
+      --dashboard-border: #c8d9d2;
+      --dashboard-border-muted: #d8e7e1;
+      --dashboard-hr: #111827;
+      --dashboard-surface: #fcfffd;
+      --dashboard-input-bg: #fcfffd;
+      --dashboard-button-bg: #def2ea;
+      --dashboard-button-hover-bg: #dcedf0;
+      --dashboard-hover-bg: rgba(58, 157, 120, 0.12);
+      --dashboard-active-bg: #def2ea;
+      --dashboard-active-border: #3a9d78;
+      --dashboard-code-bg: #edf6fb;
+      --dashboard-code-border: #d8e7e1;
+      --dashboard-mark-bg: #f8e7b6;
+      --dashboard-mark-text: #7a5211;
+      --dashboard-link: #4b93bb;
+    }
+
+    :root[data-dashboard-theme="forest"],
+    body[data-dashboard-theme="forest"] {
+      color-scheme: dark;
+      --dashboard-bg: #06110d;
+      --dashboard-text: #e3f6eb;
+      --dashboard-muted: #8cb59d;
+      --dashboard-border: #1f3a31;
+      --dashboard-border-muted: #2b4d43;
+      --dashboard-hr: #3dff78;
+      --dashboard-surface: #0b1813;
+      --dashboard-input-bg: #07130e;
+      --dashboard-button-bg: #143227;
+      --dashboard-button-hover-bg: #163228;
+      --dashboard-hover-bg: rgba(56, 211, 144, 0.14);
+      --dashboard-active-bg: #143227;
+      --dashboard-active-border: #38d390;
+      --dashboard-code-bg: #10251d;
+      --dashboard-code-border: #2b4d43;
+      --dashboard-mark-bg: #3a3317;
+      --dashboard-mark-text: #f7d76b;
+      --dashboard-link: #66d9a3;
+    }
+
+    :root[data-dashboard-theme="autumn"],
+    body[data-dashboard-theme="autumn"] {
+      color-scheme: dark;
+      --dashboard-bg: #42261b;
+      --dashboard-text: #f8e7d2;
+      --dashboard-muted: #d7ad82;
+      --dashboard-border: #966445;
+      --dashboard-border-muted: #ae7853;
+      --dashboard-hr: #f0cd67;
+      --dashboard-surface: #5f3a28;
+      --dashboard-input-bg: #543323;
+      --dashboard-button-bg: #7d4f35;
+      --dashboard-button-hover-bg: #845337;
+      --dashboard-hover-bg: rgba(217, 109, 44, 0.16);
+      --dashboard-active-bg: #7d4f35;
+      --dashboard-active-border: #d96d2c;
+      --dashboard-code-bg: #74472d;
+      --dashboard-code-border: #ae7853;
+      --dashboard-mark-bg: #7c5620;
+      --dashboard-mark-text: #ffe18f;
+      --dashboard-link: #f2a33f;
+    }
+
+    :root[data-dashboard-theme="night"],
+    body[data-dashboard-theme="night"] {
+      color-scheme: dark;
+      --dashboard-bg: #08090b;
+      --dashboard-text: #edf0f4;
+      --dashboard-muted: #9ba3af;
+      --dashboard-border: #2a2f37;
+      --dashboard-border-muted: #3a414c;
+      --dashboard-hr: #d6dbe2;
+      --dashboard-surface: #111317;
+      --dashboard-input-bg: #0d0f12;
+      --dashboard-button-bg: #1b1f26;
+      --dashboard-button-hover-bg: #1d222a;
+      --dashboard-hover-bg: rgba(214, 219, 226, 0.12);
+      --dashboard-active-bg: #1b1f26;
+      --dashboard-active-border: #d6dbe2;
+      --dashboard-code-bg: #181b20;
+      --dashboard-code-border: #3a414c;
+      --dashboard-mark-bg: #3b331d;
+      --dashboard-mark-text: #eed388;
+      --dashboard-link: #d6dbe2;
     }
 
     * {
@@ -1328,6 +1445,16 @@ function renderHtml(appState, initialView = {}) {
     let lastWheelPageTurn = 0;
     let mermaidModulePromise = null;
     const themeStorageKey = "kpe-doc-dashboard-theme";
+    const dashboardThemes = ["light", "sepia", "spring", "ocean", "forest", "autumn", "night"];
+    const dashboardThemeMeta = {
+      light: { label: "Light", mode: "light" },
+      sepia: { label: "Sepia", mode: "light" },
+      spring: { label: "Spring", mode: "light" },
+      ocean: { label: "Ocean", mode: "dark" },
+      forest: { label: "Forest", mode: "dark" },
+      autumn: { label: "Autumn", mode: "dark" },
+      night: { label: "Night", mode: "dark" },
+    };
     const wheelPageThreshold = 90;
     const wheelPageCooldownMs = 650;
 
@@ -1414,8 +1541,9 @@ function renderHtml(appState, initialView = {}) {
 
     function getInitialTheme() {
       const stored = getStoredTheme();
-      if (stored === "dark" || stored === "light") {
-        return stored;
+      const storedTheme = normalizeTheme(stored);
+      if (storedTheme) {
+        return storedTheme;
       }
 
       const hostTheme =
@@ -1423,26 +1551,44 @@ function renderHtml(appState, initialView = {}) {
         document.body.getAttribute("data-color-mode") ||
         document.documentElement.getAttribute("data-visual-mode") ||
         document.body.getAttribute("data-visual-mode");
-      if (hostTheme === "dark" || hostTheme === "light") {
-        return hostTheme;
+      if (hostTheme === "dark") {
+        return "ocean";
+      }
+      if (hostTheme === "light") {
+        return "light";
       }
 
-      return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "ocean" : "light";
+    }
+
+    function normalizeTheme(theme) {
+      if (theme === "dark") {
+        return "ocean";
+      }
+      return dashboardThemes.includes(theme) ? theme : null;
+    }
+
+    function getNextTheme(theme) {
+      const currentIndex = dashboardThemes.indexOf(normalizeTheme(theme) || "light");
+      return dashboardThemes[(currentIndex + 1) % dashboardThemes.length];
     }
 
     function applyTheme(theme) {
-      const mode = theme === "dark" ? "dark" : "light";
+      const normalizedTheme = normalizeTheme(theme) || "light";
+      const meta = dashboardThemeMeta[normalizedTheme];
+      const mode = meta.mode;
       document.documentElement.setAttribute("data-color-mode", mode);
       document.body.setAttribute("data-color-mode", mode);
       document.documentElement.setAttribute("data-visual-mode", mode);
       document.body.setAttribute("data-visual-mode", mode);
-      document.documentElement.setAttribute("data-dashboard-theme", mode);
-      document.body.setAttribute("data-dashboard-theme", mode);
+      document.documentElement.setAttribute("data-dashboard-theme", normalizedTheme);
+      document.body.setAttribute("data-dashboard-theme", normalizedTheme);
       document.documentElement.style.colorScheme = mode;
-      themeToggle.textContent = mode === "dark" ? "Light" : "Dark";
-      themeToggle.title = "Switch to " + (mode === "dark" ? "light" : "dark") + " theme";
+      const nextTheme = getNextTheme(normalizedTheme);
+      themeToggle.textContent = meta.label;
+      themeToggle.title = "Next theme: " + dashboardThemeMeta[nextTheme].label;
       themeToggle.setAttribute("aria-label", themeToggle.title);
-      storeTheme(mode);
+      storeTheme(normalizedTheme);
     }
 
     function isExternalAsset(value) {
@@ -2423,8 +2569,8 @@ function renderHtml(appState, initialView = {}) {
     });
 
     themeToggle.addEventListener("click", async () => {
-      const currentTheme = document.documentElement.getAttribute("data-color-mode") === "dark" ? "dark" : "light";
-      applyTheme(currentTheme === "dark" ? "light" : "dark");
+      const currentTheme = document.documentElement.getAttribute("data-dashboard-theme") || getInitialTheme();
+      applyTheme(getNextTheme(currentTheme));
       if (currentDocument) {
         await renderCurrentDocument();
       }
