@@ -809,24 +809,24 @@ function renderHtml(appState, initialView = {}) {
     :root[data-dashboard-theme="spring"],
     body[data-dashboard-theme="spring"] {
       color-scheme: light;
-      --dashboard-bg: #f3faf6;
-      --dashboard-text: #18212a;
-      --dashboard-muted: #637784;
-      --dashboard-border: #c8d9d2;
-      --dashboard-border-muted: #d8e7e1;
-      --dashboard-hr: #111827;
-      --dashboard-surface: #fcfffd;
-      --dashboard-input-bg: #fcfffd;
-      --dashboard-button-bg: #def2ea;
-      --dashboard-button-hover-bg: #dcedf0;
-      --dashboard-hover-bg: rgba(58, 157, 120, 0.12);
-      --dashboard-active-bg: #def2ea;
-      --dashboard-active-border: #3a9d78;
-      --dashboard-code-bg: #edf6fb;
-      --dashboard-code-border: #d8e7e1;
-      --dashboard-mark-bg: #f8e7b6;
-      --dashboard-mark-text: #7a5211;
-      --dashboard-link: #4b93bb;
+      --dashboard-bg: #cfd5d1;
+      --dashboard-text: #141c24;
+      --dashboard-muted: #546570;
+      --dashboard-border: #aab8b3;
+      --dashboard-border-muted: #b8c4bf;
+      --dashboard-hr: #0e1421;
+      --dashboard-surface: #d6d9d7;
+      --dashboard-input-bg: #d6d9d7;
+      --dashboard-button-bg: #bdcec7;
+      --dashboard-button-hover-bg: #bbc9cc;
+      --dashboard-hover-bg: rgba(49, 133, 102, 0.12);
+      --dashboard-active-bg: #bdcec7;
+      --dashboard-active-border: #318566;
+      --dashboard-code-bg: #c9d1d5;
+      --dashboard-code-border: #b8c4bf;
+      --dashboard-mark-bg: #d3c49b;
+      --dashboard-mark-text: #68460e;
+      --dashboard-link: #407d9f;
     }
 
     :root[data-dashboard-theme="forest"],
