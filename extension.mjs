@@ -838,12 +838,12 @@ function renderHtml(appState, initialView = {}) {
       --dashboard-border: #1f3a31;
       --dashboard-border-muted: #2b4d43;
       --dashboard-hr: #3dff78;
-      --dashboard-surface: #0b1813;
+      --dashboard-surface: #17241f;
       --dashboard-input-bg: #07130e;
       --dashboard-button-bg: #143227;
       --dashboard-button-hover-bg: #163228;
       --dashboard-hover-bg: rgba(56, 211, 144, 0.14);
-      --dashboard-active-bg: #143227;
+      --dashboard-active-bg: #17241f;
       --dashboard-active-border: #38d390;
       --dashboard-code-bg: #10251d;
       --dashboard-code-border: #2b4d43;
