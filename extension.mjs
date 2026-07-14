@@ -992,6 +992,12 @@ function renderHtml(appState, initialView = {}) {
       transform: translateX(0);
     }
 
+    body.nav-unpinned .nav-rail.suppress-open .nav-rail-inner {
+      opacity: 0;
+      pointer-events: none;
+      transform: translateX(-8px);
+    }
+
     body.nav-unpinned .nav-flyout-trigger {
       display: inline-flex;
       align-items: center;
@@ -1574,6 +1580,9 @@ function renderHtml(appState, initialView = {}) {
     }
 
     function setNavRailOpen(isOpen) {
+      if (isOpen) {
+        navRail.classList.remove("suppress-open");
+      }
       navRail.classList.toggle("is-open", isOpen);
       navFlyoutTrigger.setAttribute("aria-expanded", String(isOpen || navRail.classList.contains("is-pinned")));
     }
@@ -1587,6 +1596,7 @@ function renderHtml(appState, initialView = {}) {
       navPin.setAttribute("aria-label", label);
       navPin.title = label;
       storeFlag(navPinnedStorageKey, isPinned);
+      navRail.classList.toggle("suppress-open", !isPinned);
       setNavRailOpen(isPinned);
     }
 
@@ -2594,6 +2604,7 @@ function renderHtml(appState, initialView = {}) {
 
     navRail.addEventListener("mouseenter", () => setNavRailOpen(true));
     navRail.addEventListener("mouseleave", () => {
+      navRail.classList.remove("suppress-open");
       if (!navRail.classList.contains("is-pinned")) {
         setNavRailOpen(false);
       }
