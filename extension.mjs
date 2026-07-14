@@ -327,6 +327,52 @@ function makeSnippet(content, tokens) {
     return `${prefix}${normalized.slice(start, end)}${suffix}`;
 }
 
+function parseTextTerms(value) {
+    const terms = [];
+    let current = "";
+    let quote = "";
+
+    function pushCurrent() {
+        const term = current.trim().toLowerCase();
+        if (term) {
+            terms.push(term);
+        }
+        current = "";
+    }
+
+    for (let index = 0; index < value.length; index += 1) {
+        const character = value[index];
+        if (quote) {
+            if (character === "\\" && value[index + 1] === quote) {
+                current += value[index + 1];
+                index += 1;
+            } else if (character === quote) {
+                pushCurrent();
+                quote = "";
+            } else {
+                current += character;
+            }
+            continue;
+        }
+
+        if (character === "\"" || character === "'") {
+            pushCurrent();
+            quote = character;
+            continue;
+        }
+
+        if (/\s/.test(character)) {
+            pushCurrent();
+            continue;
+        }
+
+        current += character;
+    }
+
+    pushCurrent();
+    return terms;
+}
+
 function parseSearchQuery(query) {
     const tagFilters = [];
     let text = String(query ?? "").replace(/tag:\s*(?:"([^"]+)"|'([^']+)'|([^\s]+))/gi, (match, doubleQuoted, singleQuoted, bare) => {
@@ -339,13 +385,33 @@ function parseSearchQuery(query) {
     });
 
     text = text.replace(/\btag:\s*$/i, " ");
-    const tokens = text
-        .toLowerCase()
-        .split(/\s+/)
-        .map((token) => token.trim())
-        .filter(Boolean);
+    return { tokens: parseTextTerms(text), tagFilters };
+}
 
-    return { tokens, tagFilters };
+function buildTagIndex(docs) {
+    const tags = new Map();
+    for (const doc of docs) {
+        const docTags = new Set();
+        for (const tag of doc.tags ?? []) {
+            const value = normalizeTag(tag);
+            if (!value || docTags.has(value)) {
+                continue;
+            }
+            docTags.add(value);
+            const label = cleanTag(tag).replace(/^#/, "") || value;
+            const existing = tags.get(value);
+            if (existing) {
+                existing.count += 1;
+                if (label.length < existing.label.length) {
+                    existing.label = label;
+                }
+            } else {
+                tags.set(value, { value, label, count: 1 });
+            }
+        }
+    }
+
+    return Array.from(tags.values()).sort((left, right) => right.count - left.count || left.label.localeCompare(right.label));
 }
 
 async function buildIndex(repo) {
@@ -403,6 +469,7 @@ async function buildIndex(repo) {
         repo: publicRepoConfig(repo),
         repoPath,
         indexedAt: new Date().toISOString(),
+        tags: buildTagIndex(docs),
         docs,
     };
 }
@@ -782,14 +849,21 @@ function renderHtml(appState, initialView = {}) {
 
     main {
       display: grid;
-      grid-template-columns: minmax(260px, 34%) 1fr;
+      --rail-collapsed-size: 34px;
+      --nav-column: minmax(260px, 34%);
+      --tag-column: var(--rail-collapsed-size);
+      grid-template-columns: var(--nav-column) minmax(0, 1fr) var(--tag-column);
       height: calc(100vh - 97px);
       min-height: 0;
       position: relative;
     }
 
     body.nav-unpinned main {
-      grid-template-columns: 48px minmax(0, 1fr);
+      --nav-column: var(--rail-collapsed-size);
+    }
+
+    body.tag-pinned main {
+      --tag-column: minmax(220px, 24%);
     }
 
     .present-controls {
@@ -840,6 +914,7 @@ function renderHtml(appState, initialView = {}) {
 
     body.presenting header,
     body.presenting .nav-rail,
+    body.presenting .tag-rail,
     body.presenting .toolbar,
     body.presenting #doc-tags {
       display: none;
@@ -878,19 +953,31 @@ function renderHtml(appState, initialView = {}) {
       display: flex;
     }
 
-    .nav-rail {
+    .nav-rail,
+    .tag-rail {
       display: flex;
       position: relative;
       min-width: 0;
       min-height: 0;
-      border-right: 1px solid var(--theme-border);
       background: var(--theme-chrome);
       color: var(--theme-chrome-text);
       overflow: hidden;
       z-index: 3;
     }
 
-    .nav-rail-inner {
+    .nav-rail {
+      grid-column: 1;
+      border-right: 1px solid var(--theme-border);
+    }
+
+    .tag-rail {
+      grid-column: 3;
+      grid-row: 1;
+      border-left: 1px solid var(--theme-border);
+    }
+
+    .nav-rail-inner,
+    .tag-rail-inner {
       display: flex;
       flex: 1;
       min-height: 0;
@@ -898,7 +985,8 @@ function renderHtml(appState, initialView = {}) {
       flex-direction: column;
     }
 
-    .nav-rail-header {
+    .nav-rail-header,
+    .tag-rail-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -907,7 +995,8 @@ function renderHtml(appState, initialView = {}) {
       border-bottom: 1px solid var(--theme-border-muted);
     }
 
-    .nav-rail-title {
+    .nav-rail-title,
+    .tag-rail-title {
       margin: 0;
       color: var(--theme-chrome-text);
       font-size: 13px;
@@ -917,7 +1006,8 @@ function renderHtml(appState, initialView = {}) {
       text-transform: uppercase;
     }
 
-    .nav-pin {
+    .nav-pin,
+    .tag-pin {
       display: inline-flex;
       align-items: center;
       justify-content: center;
@@ -931,23 +1021,28 @@ function renderHtml(appState, initialView = {}) {
       color: var(--theme-chrome-muted-text);
     }
 
-    .nav-pin svg {
+    .nav-pin svg,
+    .tag-pin svg {
       width: 14px;
       height: 14px;
     }
 
     .nav-pin:hover,
-    .nav-pin.is-active {
+    .nav-pin.is-active,
+    .tag-pin:hover,
+    .tag-pin.is-active {
       color: var(--theme-active-border);
       border-color: color-mix(in srgb, var(--theme-active-border) 55%, transparent);
       background: var(--theme-active-bg);
     }
 
-    .nav-flyout-trigger {
+    .nav-flyout-trigger,
+    .tag-flyout-trigger {
       display: none;
     }
 
-    .results {
+    .results,
+    .tag-list {
       flex: 1;
       min-height: 0;
       overflow: auto;
@@ -957,8 +1052,8 @@ function renderHtml(appState, initialView = {}) {
     body.nav-unpinned .nav-rail {
       grid-column: 1;
       grid-row: 1;
-      width: 48px;
-      min-width: 48px;
+      width: var(--rail-collapsed-size);
+      min-width: var(--rail-collapsed-size);
       border-right: 0;
       background: transparent;
       overflow: visible;
@@ -1002,8 +1097,8 @@ function renderHtml(appState, initialView = {}) {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: 48px;
-      min-height: 112px;
+      width: var(--rail-collapsed-size);
+      min-height: 96px;
       border: 1px solid var(--theme-border);
       border-radius: 0 14px 14px 0;
       background: color-mix(in srgb, var(--theme-modal-surface-bg) 94%, transparent);
@@ -1014,7 +1109,8 @@ function renderHtml(appState, initialView = {}) {
       backdrop-filter: blur(14px);
     }
 
-    body.nav-unpinned .nav-flyout-trigger-text {
+    body.nav-unpinned .nav-flyout-trigger-text,
+    body.tag-unpinned .tag-flyout-trigger-text {
       font-size: 11px;
       font-weight: var(--font-weight-semibold, 600);
       letter-spacing: 0.08em;
@@ -1030,7 +1126,124 @@ function renderHtml(appState, initialView = {}) {
     }
 
     body.nav-unpinned .document {
-      grid-column: 2 / -1;
+      grid-column: 2;
+    }
+
+    body.tag-unpinned .tag-rail {
+      grid-column: 3;
+      grid-row: 1;
+      justify-content: flex-end;
+      width: var(--rail-collapsed-size);
+      min-width: var(--rail-collapsed-size);
+      border-left: 0;
+      background: transparent;
+      overflow: visible;
+    }
+
+    body.tag-unpinned .tag-rail-inner {
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: min(280px, calc(100vw - 32px));
+      height: 100%;
+      border: 1px solid var(--theme-border);
+      border-radius: 14px 0 0 14px;
+      background: color-mix(in srgb, var(--theme-chrome) 96%, transparent);
+      box-shadow: var(--theme-shadow);
+      opacity: 0;
+      pointer-events: none;
+      transform: translateX(8px);
+      transition:
+        opacity 160ms ease,
+        transform 160ms ease,
+        border-color 160ms ease,
+        background-color 160ms ease;
+    }
+
+    body.tag-unpinned .tag-rail.is-open .tag-rail-inner,
+    body.tag-unpinned .tag-rail:hover .tag-rail-inner,
+    body.tag-unpinned .tag-rail:focus-within .tag-rail-inner {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateX(0);
+    }
+
+    body.tag-unpinned .tag-rail.suppress-open .tag-rail-inner {
+      opacity: 0;
+      pointer-events: none;
+      transform: translateX(8px);
+    }
+
+    body.tag-unpinned .tag-flyout-trigger {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: var(--rail-collapsed-size);
+      min-height: 96px;
+      border: 1px solid var(--theme-border);
+      border-radius: 14px 0 0 14px;
+      background: color-mix(in srgb, var(--theme-modal-surface-bg) 94%, transparent);
+      box-shadow: var(--theme-shadow);
+      color: var(--theme-text);
+      cursor: pointer;
+      padding: 8px 4px;
+      backdrop-filter: blur(14px);
+    }
+
+    body.tag-unpinned .tag-flyout-trigger-text {
+      writing-mode: vertical-rl;
+    }
+
+    body.tag-unpinned .tag-rail.is-open .tag-flyout-trigger,
+    body.tag-unpinned .tag-rail:hover .tag-flyout-trigger,
+    body.tag-unpinned .tag-rail:focus-within .tag-flyout-trigger {
+      border-color: color-mix(in srgb, var(--theme-active-border) 55%, transparent);
+      background: color-mix(in srgb, var(--theme-active-bg) 92%, transparent);
+    }
+
+    .tag-summary {
+      display: block;
+      color: var(--theme-chrome-muted-text);
+      font-size: 12px;
+      line-height: 16px;
+    }
+
+    .tag-button {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      width: 100%;
+      padding: 9px 12px;
+      border: 0;
+      border-bottom: 1px solid var(--theme-border-muted);
+      border-radius: 0;
+      background: transparent;
+      color: var(--theme-chrome-text);
+      text-align: left;
+    }
+
+    .tag-button:hover,
+    .tag-button:focus {
+      background: var(--theme-active-bg);
+    }
+
+    .tag-button-label {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .tag-button-count {
+      flex: 0 0 auto;
+      min-width: 24px;
+      padding: 1px 7px;
+      border-radius: 999px;
+      background: var(--theme-surface);
+      color: var(--theme-muted-text);
+      font-size: 12px;
+      text-align: center;
     }
 
     .result {
@@ -1341,18 +1554,23 @@ function renderHtml(appState, initialView = {}) {
       }
 
       .nav-rail,
-      body.nav-unpinned .nav-rail {
+      .tag-rail,
+      body.nav-unpinned .nav-rail,
+      body.tag-unpinned .tag-rail {
         position: static;
         width: auto;
         min-width: 0;
         border-right: 0;
+        border-left: 0;
         border-bottom: 1px solid var(--theme-border);
         background: var(--theme-chrome);
         overflow: hidden;
       }
 
       .nav-rail-inner,
-      body.nav-unpinned .nav-rail-inner {
+      .tag-rail-inner,
+      body.nav-unpinned .nav-rail-inner,
+      body.tag-unpinned .tag-rail-inner {
         position: static;
         width: auto;
         height: auto;
@@ -1366,12 +1584,16 @@ function renderHtml(appState, initialView = {}) {
       }
 
       .nav-flyout-trigger,
+      .tag-flyout-trigger,
       .nav-pin,
-      body.nav-unpinned .nav-flyout-trigger {
+      .tag-pin,
+      body.nav-unpinned .nav-flyout-trigger,
+      body.tag-unpinned .tag-flyout-trigger {
         display: none;
       }
 
-      .results {
+      .results,
+      .tag-list {
         max-height: 42vh;
       }
 
@@ -1437,6 +1659,25 @@ function renderHtml(appState, initialView = {}) {
       <div id="doc-tags"></div>
       <article id="doc-content" class="markdown empty">Search results will appear on the left. Choose a result to view its markdown here.</article>
     </section>
+    <aside id="tag-rail" class="tag-rail" aria-label="Tag filters">
+      <button id="tag-flyout-trigger" class="tag-flyout-trigger" type="button" aria-label="Open tag panel" aria-expanded="false">
+        <span class="tag-flyout-trigger-text">Tags</span>
+      </button>
+      <div class="tag-rail-inner">
+        <div class="tag-rail-header">
+          <div>
+            <h2 class="tag-rail-title">Tags</h2>
+            <span id="tag-count" class="tag-summary">Loading tags...</span>
+          </div>
+          <button id="tag-pin" class="tag-pin" type="button" aria-label="Pin tag sidebar" aria-pressed="false" title="Pin tag sidebar">
+            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+              <path d="M5.4 1.5h5.2v1.7L9.7 5.5v2.8l1.8 1v1.2H8.6v4H7.4v-4H4.5V9.3l1.8-1V5.5L5.4 3.2V1.5Z" fill="currentColor"></path>
+            </svg>
+          </button>
+        </div>
+        <section id="tag-list" class="tag-list" aria-label="Available tags"></section>
+      </div>
+    </aside>
   </main>
   <script>
     const searchInput = document.getElementById("search");
@@ -1444,6 +1685,11 @@ function renderHtml(appState, initialView = {}) {
     const navRail = document.getElementById("nav-rail");
     const navPin = document.getElementById("nav-pin");
     const navFlyoutTrigger = document.getElementById("nav-flyout-trigger");
+    const tagRail = document.getElementById("tag-rail");
+    const tagPin = document.getElementById("tag-pin");
+    const tagFlyoutTrigger = document.getElementById("tag-flyout-trigger");
+    const tagList = document.getElementById("tag-list");
+    const tagCount = document.getElementById("tag-count");
     const resultsElement = document.getElementById("results");
     const statusElement = document.getElementById("status");
     const docTitle = document.getElementById("doc-title");
@@ -1476,6 +1722,7 @@ function renderHtml(appState, initialView = {}) {
     let mermaidModulePromise = null;
     const themeStorageKey = "kpe-doc-dashboard-theme";
     const navPinnedStorageKey = "content-viewer-nav-pinned";
+    const tagPinnedStorageKey = "content-viewer-tag-pinned";
     const themeIds = ${JSON.stringify(themeConfig.themeIds)};
     const themeAliases = ${JSON.stringify(themeConfig.themeAliases)};
     const themeMeta = ${JSON.stringify(themeConfig.themeMeta)};
@@ -1493,6 +1740,84 @@ function renderHtml(appState, initialView = {}) {
 
     function escapeRegExp(value) {
       return value.replace(/[.*+?^$\\{\\}()|[\\]\\\\]/g, "\\\\$&");
+    }
+
+    function cleanTag(value) {
+      return String(value ?? "")
+        .trim()
+        .replace(/^["']|["']$/g, "")
+        .trim();
+    }
+
+    function normalizeTag(value) {
+      return cleanTag(value).replace(/^#/, "").toLowerCase();
+    }
+
+    function parseTextTerms(value) {
+      const terms = [];
+      let current = "";
+      let quote = "";
+
+      function pushCurrent() {
+        const term = current.trim().toLowerCase();
+        if (term) {
+          terms.push(term);
+        }
+        current = "";
+      }
+
+      for (let index = 0; index < value.length; index += 1) {
+        const character = value[index];
+        if (quote) {
+          if (character === "\\\\" && value[index + 1] === quote) {
+            current += value[index + 1];
+            index += 1;
+          } else if (character === quote) {
+            pushCurrent();
+            quote = "";
+          } else {
+            current += character;
+          }
+          continue;
+        }
+
+        if (character === '"' || character === "'") {
+          pushCurrent();
+          quote = character;
+          continue;
+        }
+
+        if (/\\s/.test(character)) {
+          pushCurrent();
+          continue;
+        }
+
+        current += character;
+      }
+
+      pushCurrent();
+      return terms;
+    }
+
+    function parseSearchQuery(query) {
+      const tagFilters = [];
+      let text = String(query ?? "").replace(/tag:\\s*(?:"([^"]+)"|'([^']+)'|([^\\s]+))/gi, (match, doubleQuoted, singleQuoted, bare) => {
+        const tag = cleanTag(doubleQuoted ?? singleQuoted ?? bare);
+        if (tag) {
+          tagFilters.push(normalizeTag(tag));
+        }
+
+        return " ";
+      });
+
+      text = text.replace(/\\btag:\\s*$/i, " ");
+      return { tokens: parseTextTerms(text), tagFilters };
+    }
+
+    function tagFilterToken(tag) {
+      const value = cleanTag(tag.label || tag.value);
+      const escaped = value.replace(/\\\\/g, "\\\\\\\\").replace(/"/g, '\\\\"');
+      return /^[A-Za-z0-9._-]+$/.test(value) ? "tag:" + value : 'tag:"' + escaped + '"';
     }
 
     function highlightText(value) {
@@ -1515,6 +1840,39 @@ function renderHtml(appState, initialView = {}) {
       const parts = String(value).split("/").filter(Boolean);
       const directoryParts = parts.slice(0, -1);
       return directoryParts.length ? directoryParts.join("/") : "Repository root";
+    }
+
+    function renderTagList(tags) {
+      const tagItems = Array.isArray(tags) ? tags : [];
+      tagCount.textContent = tagItems.length === 1 ? "1 tag" : tagItems.length + " tags";
+      tagList.innerHTML = "";
+
+      if (!tagItems.length) {
+        tagList.innerHTML = '<div class="empty" style="padding:12px;">No tags found.</div>';
+        return;
+      }
+
+      for (const tag of tagItems) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "tag-button";
+        button.innerHTML =
+          '<span class="tag-button-label">' + escapeHtml(tag.label || tag.value) + "</span>" +
+          '<span class="tag-button-count">' + escapeHtml(tag.count) + "</span>";
+        button.addEventListener("click", () => addTagFilter(tag));
+        tagList.appendChild(button);
+      }
+    }
+
+    function addTagFilter(tag) {
+      const normalizedValue = normalizeTag(tag.value || tag.label);
+      const parsed = parseSearchQuery(searchInput.value);
+      if (!parsed.tagFilters.includes(normalizedValue)) {
+        const token = tagFilterToken(tag);
+        searchInput.value = [searchInput.value.trim(), token].filter(Boolean).join(" ");
+      }
+
+      search();
     }
 
     function hasHiddenHeadingForToc(value) {
@@ -1587,6 +1945,14 @@ function renderHtml(appState, initialView = {}) {
       navFlyoutTrigger.setAttribute("aria-expanded", String(isOpen || navRail.classList.contains("is-pinned")));
     }
 
+    function setTagRailOpen(isOpen) {
+      if (isOpen) {
+        tagRail.classList.remove("suppress-open");
+      }
+      tagRail.classList.toggle("is-open", isOpen);
+      tagFlyoutTrigger.setAttribute("aria-expanded", String(isOpen || tagRail.classList.contains("is-pinned")));
+    }
+
     function setNavPinned(isPinned) {
       document.body.classList.toggle("nav-unpinned", !isPinned);
       navRail.classList.toggle("is-pinned", isPinned);
@@ -1600,10 +1966,31 @@ function renderHtml(appState, initialView = {}) {
       setNavRailOpen(isPinned);
     }
 
+    function setTagPinned(isPinned) {
+      document.body.classList.toggle("tag-pinned", isPinned);
+      document.body.classList.toggle("tag-unpinned", !isPinned);
+      tagRail.classList.toggle("is-pinned", isPinned);
+      tagPin.classList.toggle("is-active", isPinned);
+      tagPin.setAttribute("aria-pressed", String(isPinned));
+      const label = isPinned ? "Unpin tag sidebar" : "Pin tag sidebar";
+      tagPin.setAttribute("aria-label", label);
+      tagPin.title = label;
+      storeFlag(tagPinnedStorageKey, isPinned);
+      tagRail.classList.toggle("suppress-open", !isPinned);
+      setTagRailOpen(isPinned);
+    }
+
     function handleNavRailBlur(event) {
       const nextFocused = event.relatedTarget;
       if (!(nextFocused instanceof Node) || !navRail.contains(nextFocused)) {
         setNavRailOpen(false);
+      }
+    }
+
+    function handleTagRailBlur(event) {
+      const nextFocused = event.relatedTarget;
+      if (!(nextFocused instanceof Node) || !tagRail.contains(nextFocused)) {
+        setTagRailOpen(false);
       }
     }
 
@@ -2477,16 +2864,13 @@ function renderHtml(appState, initialView = {}) {
 
     async function search() {
       const query = searchInput.value.trim();
-      highlightTokens = query
-        .toLowerCase()
-        .split(/\\s+/)
-        .map((token) => token.trim())
-        .filter((token) => token.length > 1);
+      highlightTokens = parseSearchQuery(query).tokens.filter((token) => token.length > 1);
       statusElement.textContent = "Searching...";
       try {
         const data = await requestJson(apiUrl("/api/search", { q: query }));
         statusElement.textContent = data.count + " documents shown from " + data.total + " indexed markdown files in " + repoLabel(activeRepo);
         resultsElement.innerHTML = "";
+        renderTagList(data.tags);
 
         if (!data.results.length) {
           resultsElement.innerHTML = '<div class="empty" style="padding:12px;">No matching documents.</div>';
@@ -2616,6 +3000,20 @@ function renderHtml(appState, initialView = {}) {
       setNavPinned(!navRail.classList.contains("is-pinned"));
     });
 
+    tagRail.addEventListener("mouseenter", () => setTagRailOpen(true));
+    tagRail.addEventListener("mouseleave", () => {
+      tagRail.classList.remove("suppress-open");
+      if (!tagRail.classList.contains("is-pinned")) {
+        setTagRailOpen(false);
+      }
+    });
+    tagRail.addEventListener("focusin", () => setTagRailOpen(true));
+    tagRail.addEventListener("focusout", handleTagRailBlur);
+    tagFlyoutTrigger.addEventListener("click", () => setTagRailOpen(true));
+    tagPin.addEventListener("click", () => {
+      setTagPinned(!tagRail.classList.contains("is-pinned"));
+    });
+
     refreshButton.addEventListener("click", async () => {
       refreshButton.disabled = true;
       statusElement.textContent = "Pulling latest content and refreshing index...";
@@ -2714,6 +3112,7 @@ function renderHtml(appState, initialView = {}) {
     async function initialize() {
       populateRepoSelect();
       setNavPinned(getStoredFlag(navPinnedStorageKey, true));
+      setTagPinned(getStoredFlag(tagPinnedStorageKey, false));
       applyTheme(getInitialTheme());
       updatePresentationControls();
       if (initialDocPath) {
@@ -2831,6 +3230,7 @@ async function handleRequest(appState, req, res) {
                 indexedAt: index.indexedAt,
                 repo: index.repo,
                 repoPath: index.repoPath,
+                tags: index.tags,
                 results,
             });
             return;
@@ -2960,7 +3360,7 @@ const session = await joinSession({
                 },
                 {
                     name: "search_documents",
-                    description: "Search indexed markdown documents and return matching titles, paths, and snippets.",
+                    description: "Search indexed markdown documents and return matching titles, paths, snippets, and tag summaries.",
                     inputSchema: {
                         type: "object",
                         properties: {
@@ -2984,6 +3384,7 @@ const session = await joinSession({
                             total: index.docs.length,
                             count: results.length,
                             repo: index.repo,
+                            tags: index.tags,
                             results,
                         };
                     },

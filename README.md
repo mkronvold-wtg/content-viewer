@@ -13,11 +13,13 @@ This repository includes:
 
 - Markdown search across title, path, body, and frontmatter tags.
 - `tag:KT`-style frontmatter tag filtering.
+- Quoted phrase search, for example `"knowledge transfer"` keeps the phrase grouped.
+- Generated tag index with a right-side tag rail; clicking a tag adds a `tag:value` filter.
 - Local image/SVG asset resolution.
 - Mermaid rendering.
 - Tables, task lists, nested lists, blockquotes, code blocks, admonitions, links, bold, italic, and strikethrough.
 - Presentation mode with heading or `---` pagination.
-- Pin/unpin document navigation sidebar with browser-stored flyout behavior.
+- Pin/unpin document navigation and tag sidebars with browser-stored flyout behavior.
 - Shared canonical `mkronvold/themes` theme pack loaded from vendored theme metadata.
 - Multiple independent content repos addressed by URL prefix, for example `/kpe.content`.
 - Configurable per-repo base directory hiding, so `/data/Users/...` displays and shares as `Users/...`.
