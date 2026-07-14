@@ -256,10 +256,12 @@ function extractFrontmatter(content) {
 
     const frontmatter = match[1];
     const titleMatch = frontmatter.match(/^title:\s*(.+)$/im);
-    const tags = extractFrontmatterTags(frontmatter);
+    const tags = extractFrontmatterList(frontmatter, ["tags", "tag"]);
+    const layers = extractFrontmatterList(frontmatter, ["layers", "layer"]);
 
     return {
         title: titleMatch ? titleMatch[1].trim().replace(/^["']|["']$/g, "") : undefined,
+        layers,
         tags,
     };
 }
@@ -268,30 +270,41 @@ function stripFrontmatter(content) {
     return String(content ?? "").replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "");
 }
 
-function extractFrontmatterTags(frontmatter) {
-    const blockMatch = frontmatter.match(/^tags:[ \t]*\r?\n((?:[ \t]+-[ \t]+.+\r?\n?)+)/im);
-    if (blockMatch) {
-        return blockMatch[1]
-            .split(/\r?\n/)
-            .map((line) => cleanTag(line.replace(/^\s+-\s+/, "")))
-            .filter(Boolean);
-    }
-
-    const inlineMatch = frontmatter.match(/^tags:[ \t]*(.+)$/im);
-    if (inlineMatch && inlineMatch[1].trim()) {
-        const inlineValue = inlineMatch[1].trim();
-        const listMatch = inlineValue.match(/^\[(.*)\]$/);
-        if (listMatch) {
-            return listMatch[1]
-                .split(",")
-                .map(cleanTag)
-                .filter(Boolean);
+function extractFrontmatterList(frontmatter, keys) {
+    const values = [];
+    for (const key of keys) {
+        const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const blockMatch = frontmatter.match(new RegExp("^" + escapedKey + ":[ \\t]*\\r?\\n((?:[ \\t]+-[ \\t]+.+\\r?\\n?)+)", "im"));
+        if (blockMatch) {
+            values.push(
+                ...blockMatch[1]
+                    .split(/\r?\n/)
+                    .map((line) => cleanTag(line.replace(/^\s+-\s+/, "")))
+                    .filter(Boolean),
+            );
         }
 
-        return [cleanTag(inlineValue)].filter(Boolean);
+        const inlineMatch = frontmatter.match(new RegExp("^" + escapedKey + ":[ \\t]*(.+)$", "im"));
+        if (inlineMatch && inlineMatch[1].trim()) {
+            const inlineValue = inlineMatch[1].trim();
+            const listMatch = inlineValue.match(/^\[(.*)\]$/);
+            if (listMatch) {
+                values.push(...listMatch[1].split(",").map(cleanTag).filter(Boolean));
+            } else {
+                values.push(cleanTag(inlineValue));
+            }
+        }
     }
 
-    return [];
+    const seen = new Set();
+    return values.filter((value) => {
+        const normalized = normalizeTag(value);
+        if (!normalized || seen.has(normalized)) {
+            return false;
+        }
+        seen.add(normalized);
+        return true;
+    });
 }
 
 function extractTitle(content, filePath) {
@@ -375,43 +388,46 @@ function parseTextTerms(value) {
 
 function parseSearchQuery(query) {
     const tagFilters = [];
-    let text = String(query ?? "").replace(/tag:\s*(?:"([^"]+)"|'([^']+)'|([^\s]+))/gi, (match, doubleQuoted, singleQuoted, bare) => {
-        const tag = cleanTag(doubleQuoted ?? singleQuoted ?? bare);
-        if (tag) {
-            tagFilters.push(normalizeTag(tag));
+    const layerFilters = [];
+    let text = String(query ?? "").replace(/\b(tag|layer):\s*(?:"([^"]+)"|'([^']+)'|([^\s]+))/gi, (match, facet, doubleQuoted, singleQuoted, bare) => {
+        const value = cleanTag(doubleQuoted ?? singleQuoted ?? bare);
+        if (value && facet.toLowerCase() === "layer") {
+            layerFilters.push(normalizeTag(value));
+        } else if (value) {
+            tagFilters.push(normalizeTag(value));
         }
 
         return " ";
     });
 
-    text = text.replace(/\btag:\s*$/i, " ");
-    return { tokens: parseTextTerms(text), tagFilters };
+    text = text.replace(/\b(?:tag|layer):\s*$/i, " ");
+    return { tokens: parseTextTerms(text), tagFilters, layerFilters };
 }
 
-function buildTagIndex(docs) {
-    const tags = new Map();
+function buildFacetIndex(docs, fieldName) {
+    const facets = new Map();
     for (const doc of docs) {
-        const docTags = new Set();
-        for (const tag of doc.tags ?? []) {
-            const value = normalizeTag(tag);
-            if (!value || docTags.has(value)) {
+        const docValues = new Set();
+        for (const item of doc[fieldName] ?? []) {
+            const value = normalizeTag(item);
+            if (!value || docValues.has(value)) {
                 continue;
             }
-            docTags.add(value);
-            const label = cleanTag(tag).replace(/^#/, "") || value;
-            const existing = tags.get(value);
+            docValues.add(value);
+            const label = cleanTag(item).replace(/^#/, "") || value;
+            const existing = facets.get(value);
             if (existing) {
                 existing.count += 1;
                 if (label.length < existing.label.length) {
                     existing.label = label;
                 }
             } else {
-                tags.set(value, { value, label, count: 1 });
+                facets.set(value, { value, label, count: 1 });
             }
         }
     }
 
-    return Array.from(tags.values()).sort((left, right) => right.count - left.count || left.label.localeCompare(right.label));
+    return Array.from(facets.values()).sort((left, right) => right.count - left.count || left.label.localeCompare(right.label));
 }
 
 async function buildIndex(repo) {
@@ -453,11 +469,12 @@ async function buildIndex(repo) {
                     path: displayPath,
                     sourcePath: relativePath,
                     title,
+                    layers: frontmatter.layers ?? [],
                     tags: frontmatter.tags ?? [],
                     size: stat.size,
                     modified: stat.mtime.toISOString(),
                     content,
-                    searchable: `${title}\n${displayPath}\n${relativePath}\n${(frontmatter.tags ?? []).join(" ")}\n${content}`.toLowerCase(),
+                    searchable: `${title}\n${displayPath}\n${relativePath}\n${(frontmatter.layers ?? []).join(" ")}\n${(frontmatter.tags ?? []).join(" ")}\n${content}`.toLowerCase(),
                 });
             }),
         );
@@ -469,7 +486,10 @@ async function buildIndex(repo) {
         repo: publicRepoConfig(repo),
         repoPath,
         indexedAt: new Date().toISOString(),
-        tags: buildTagIndex(docs),
+        facets: {
+            layers: buildFacetIndex(docs, "layers"),
+            tags: buildFacetIndex(docs, "tags"),
+        },
         docs,
     };
 }
@@ -500,10 +520,15 @@ async function ensureIndex(state) {
 }
 
 function searchIndex(index, query, limit = 50) {
-    const { tokens, tagFilters } = parseSearchQuery(query);
+    const { tokens, tagFilters, layerFilters } = parseSearchQuery(query);
 
     const scored = index.docs
         .map((doc) => {
+            const normalizedLayers = doc.layers.map(normalizeTag);
+            if (layerFilters.length && !layerFilters.every((layer) => normalizedLayers.includes(layer))) {
+                return null;
+            }
+
             const normalizedTags = doc.tags.map(normalizeTag);
             if (tagFilters.length && !tagFilters.every((tag) => normalizedTags.includes(tag))) {
                 return null;
@@ -519,6 +544,7 @@ function searchIndex(index, query, limit = 50) {
 
             const title = doc.title.toLowerCase();
             const docPath = doc.path.toLowerCase();
+            const layers = doc.layers.join(" ").toLowerCase();
             const tags = doc.tags.join(" ").toLowerCase();
             const score = tokens.reduce((total, token) => {
                 const contentMatches = doc.searchable.split(token).length - 1;
@@ -526,10 +552,11 @@ function searchIndex(index, query, limit = 50) {
                     total +
                     (title.includes(token) ? 50 : 0) +
                     (docPath.includes(token) ? 25 : 0) +
+                    (layers.includes(token) ? 20 : 0) +
                     (tags.includes(token) ? 20 : 0) +
                     Math.min(contentMatches, 20)
                 );
-            }, tagFilters.length ? tagFilters.length * 100 : 0);
+            }, (tagFilters.length + layerFilters.length) * 100);
 
             return { doc, score };
         })
@@ -540,6 +567,7 @@ function searchIndex(index, query, limit = 50) {
     return scored.map(({ doc, score }) => ({
         path: doc.path,
         title: doc.title,
+        layers: doc.layers,
         tags: doc.tags,
         modified: doc.modified,
         size: doc.size,
@@ -1230,6 +1258,13 @@ function renderHtml(appState, initialView = {}) {
       color: var(--theme-active-border);
     }
 
+    .tag-facet-toggle {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px;
+      min-width: 132px;
+    }
+
     .tag-button {
       display: flex;
       align-items: center;
@@ -1688,8 +1723,11 @@ function renderHtml(appState, initialView = {}) {
       <div class="tag-rail-inner">
         <div class="tag-rail-header">
           <div>
-            <h2 class="tag-rail-title">Tags</h2>
-            <span id="tag-count" class="tag-summary">Loading tags...</span>
+            <div class="tag-facet-toggle" role="group" aria-label="Metadata facet">
+              <button class="tag-scope-button is-active" type="button" data-tag-facet="layer" aria-pressed="true">Layer</button>
+              <button class="tag-scope-button" type="button" data-tag-facet="tags" aria-pressed="false">Tags</button>
+            </div>
+            <span id="tag-count" class="tag-summary">Loading metadata...</span>
           </div>
           <button id="tag-pin" class="tag-pin" type="button" aria-label="Pin tag sidebar" aria-pressed="false" title="Pin tag sidebar">
             <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
@@ -1716,6 +1754,7 @@ function renderHtml(appState, initialView = {}) {
     const tagFlyoutTrigger = document.getElementById("tag-flyout-trigger");
     const tagList = document.getElementById("tag-list");
     const tagCount = document.getElementById("tag-count");
+    const tagFacetButtons = Array.from(document.querySelectorAll("[data-tag-facet]"));
     const tagScopeButtons = Array.from(document.querySelectorAll("[data-tag-scope]"));
     const resultsElement = document.getElementById("results");
     const statusElement = document.getElementById("status");
@@ -1740,7 +1779,8 @@ function renderHtml(appState, initialView = {}) {
     let activePath = initialDocPath;
     let searchTimer;
     let highlightTokens = [];
-    let allDocumentTags = [];
+    let allDocumentFacets = { layers: [], tags: [] };
+    let tagFacet = "layer";
     let tagScope = "all";
     let currentDocPath = "";
     let currentDocument = null;
@@ -1843,10 +1883,11 @@ function renderHtml(appState, initialView = {}) {
       return { tokens: parseTextTerms(text), tagFilters };
     }
 
-    function tagFilterToken(tag) {
-      const value = cleanTag(tag.label || tag.value);
+    function facetFilterToken(item) {
+      const value = cleanTag(item.label || item.value);
       const escaped = value.replace(/\\\\/g, "\\\\\\\\").replace(/"/g, '\\\\"');
-      return /^[A-Za-z0-9._-]+$/.test(value) ? "tag:" + value : 'tag:"' + escaped + '"';
+      const prefix = tagFacet === "layer" ? "layer:" : "tag:";
+      return /^[A-Za-z0-9._-]+$/.test(value) ? prefix + value : prefix + '"' + escaped + '"';
     }
 
     function highlightText(value) {
@@ -1871,15 +1912,33 @@ function renderHtml(appState, initialView = {}) {
       return directoryParts.length ? directoryParts.join("/") : "Repository root";
     }
 
-    function getCurrentDocumentTags() {
-      const tags = new Map();
-      for (const tag of currentDocument?.tags ?? []) {
-        const value = normalizeTag(tag);
-        if (value && !tags.has(value)) {
-          tags.set(value, { value, label: cleanTag(tag).replace(/^#/, "") || value });
+    function getFacetFieldName() {
+      return tagFacet === "layer" ? "layers" : "tags";
+    }
+
+    function getFacetLabel() {
+      return tagFacet === "layer" ? "layer" : "tag";
+    }
+
+    function getCurrentDocumentFacetValues() {
+      const values = new Map();
+      for (const item of currentDocument?.[getFacetFieldName()] ?? []) {
+        const value = normalizeTag(item);
+        if (value && !values.has(value)) {
+          values.set(value, { value, label: cleanTag(item).replace(/^#/, "") || value });
         }
       }
-      return Array.from(tags.values()).sort((left, right) => left.label.localeCompare(right.label));
+      return Array.from(values.values()).sort((left, right) => left.label.localeCompare(right.label));
+    }
+
+    function setTagFacet(facet) {
+      tagFacet = facet === "tags" ? "tags" : "layer";
+      for (const button of tagFacetButtons) {
+        const isActive = button.dataset.tagFacet === tagFacet;
+        button.classList.toggle("is-active", isActive);
+        button.setAttribute("aria-pressed", String(isActive));
+      }
+      renderActiveTagList();
     }
 
     function setTagScope(scope) {
@@ -1894,20 +1953,21 @@ function renderHtml(appState, initialView = {}) {
 
     function renderActiveTagList() {
       const isDocumentScope = tagScope === "document";
-      const tagItems = isDocumentScope ? getCurrentDocumentTags() : allDocumentTags;
+      const facetLabel = getFacetLabel();
+      const tagItems = isDocumentScope ? getCurrentDocumentFacetValues() : allDocumentFacets[getFacetFieldName()];
       if (isDocumentScope && !currentDocument) {
         tagCount.textContent = "No document selected";
       } else if (isDocumentScope) {
-        tagCount.textContent = tagItems.length === 1 ? "1 tag in this document" : tagItems.length + " tags in this document";
+        tagCount.textContent = tagItems.length === 1 ? "1 " + facetLabel + " in this document" : tagItems.length + " " + facetLabel + "s in this document";
       } else {
-        tagCount.textContent = tagItems.length === 1 ? "1 tag across all documents" : tagItems.length + " tags across all documents";
+        tagCount.textContent = tagItems.length === 1 ? "1 " + facetLabel + " across all documents" : tagItems.length + " " + facetLabel + "s across all documents";
       }
       tagList.innerHTML = "";
 
       if (!tagItems.length) {
         const message = isDocumentScope
-          ? (currentDocument ? "No tags for this document." : "Open a document to see its tags.")
-          : "No tags found.";
+          ? (currentDocument ? "No " + facetLabel + "s for this document." : "Open a document to see its " + facetLabel + "s.")
+          : "No " + facetLabel + "s found.";
         tagList.innerHTML = '<div class="empty" style="padding:12px;">' + escapeHtml(message) + "</div>";
         return;
       }
@@ -1919,16 +1979,17 @@ function renderHtml(appState, initialView = {}) {
         button.innerHTML =
           '<span class="tag-button-label">' + escapeHtml(tag.label || tag.value) + "</span>" +
           (tag.count ? '<span class="tag-button-count">' + escapeHtml(tag.count) + "</span>" : "");
-        button.addEventListener("click", () => addTagFilter(tag));
+        button.addEventListener("click", () => addFacetFilter(tag));
         tagList.appendChild(button);
       }
     }
 
-    function addTagFilter(tag) {
-      const normalizedValue = normalizeTag(tag.value || tag.label);
+    function addFacetFilter(item) {
+      const normalizedValue = normalizeTag(item.value || item.label);
       const parsed = parseSearchQuery(searchInput.value);
-      if (!parsed.tagFilters.includes(normalizedValue)) {
-        const token = tagFilterToken(tag);
+      const existingFilters = tagFacet === "layer" ? parsed.layerFilters : parsed.tagFilters;
+      if (!existingFilters.includes(normalizedValue)) {
+        const token = facetFilterToken(item);
         searchInput.value = [searchInput.value.trim(), token].filter(Boolean).join(" ");
       }
 
@@ -2930,7 +2991,10 @@ function renderHtml(appState, initialView = {}) {
         const data = await requestJson(apiUrl("/api/search", { q: query }));
         statusElement.textContent = data.count + " documents shown from " + data.total + " indexed markdown files in " + repoLabel(activeRepo);
         resultsElement.innerHTML = "";
-        allDocumentTags = Array.isArray(data.tags) ? data.tags : [];
+        allDocumentFacets = {
+          layers: Array.isArray(data.facets?.layers) ? data.facets.layers : (Array.isArray(data.layers) ? data.layers : []),
+          tags: Array.isArray(data.facets?.tags) ? data.facets.tags : (Array.isArray(data.tags) ? data.tags : []),
+        };
         renderActiveTagList();
 
         if (!data.results.length) {
@@ -3075,6 +3139,9 @@ function renderHtml(appState, initialView = {}) {
     tagFlyoutTrigger.addEventListener("click", () => setTagRailOpen(true));
     tagPin.addEventListener("click", () => {
       setTagPinned(!tagRail.classList.contains("is-pinned"));
+    });
+    tagFacetButtons.forEach((button) => {
+      button.addEventListener("click", () => setTagFacet(button.dataset.tagFacet));
     });
     tagScopeButtons.forEach((button) => {
       button.addEventListener("click", () => setTagScope(button.dataset.tagScope));
@@ -3296,7 +3363,9 @@ async function handleRequest(appState, req, res) {
                 indexedAt: index.indexedAt,
                 repo: index.repo,
                 repoPath: index.repoPath,
-                tags: index.tags,
+                facets: index.facets,
+                layers: index.facets.layers,
+                tags: index.facets.tags,
                 results,
             });
             return;
@@ -3315,6 +3384,7 @@ async function handleRequest(appState, req, res) {
                 path: doc.path,
                 sourcePath: doc.sourcePath,
                 title: doc.title,
+                layers: doc.layers,
                 tags: doc.tags,
                 modified: doc.modified,
                 size: doc.size,
