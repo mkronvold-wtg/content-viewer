@@ -20,7 +20,7 @@ This repository includes:
 - Tables, task lists, nested lists, blockquotes, code blocks, admonitions, links, bold, italic, and strikethrough.
 - Presentation mode with heading or `---` pagination.
 - Pin/unpin document navigation and tag sidebars with browser-stored flyout behavior.
-- Shared canonical `mkronvold/themes` theme pack loaded from vendored theme metadata.
+- Shared canonical `mkronvold/themes` theme pack loaded from vendored theme metadata and selected from a theme pulldown.
 - Multiple independent content repos addressed by URL prefix, for example `/kpe.content`.
 - Configurable per-repo base directory hiding, so `/data/Users/...` displays and shares as `Users/...`.
 - Direct presentation links and a Share button that copies the current document URL.

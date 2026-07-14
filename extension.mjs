@@ -923,7 +923,7 @@ function renderHtml(appState, initialView = {}) {
       backdrop-filter: blur(8px);
     }
 
-    .present-controls select,
+    .present-controls #paginate-level,
     .present-controls .page-controls {
       display: none;
     }
@@ -976,7 +976,7 @@ function renderHtml(appState, initialView = {}) {
       color: var(--theme-chrome-text);
     }
 
-    body.presenting .present-controls select,
+    body.presenting .present-controls #paginate-level,
     body.presenting .present-controls .page-controls {
       display: flex;
     }
@@ -1662,7 +1662,7 @@ function renderHtml(appState, initialView = {}) {
 </head>
 <body>
   <div class="present-controls" aria-label="Presentation controls">
-    <button id="theme-toggle" type="button" title="Cycle theme">Dark</button>
+    <select id="theme-select" title="Theme" aria-label="Theme"></select>
     <button id="present-toggle" type="button" aria-pressed="false" title="Toggle present mode">Present</button>
     <select id="paginate-level" title="Paginate by header level" aria-label="Paginate by header level">
       <option value="1">1</option>
@@ -1763,7 +1763,7 @@ function renderHtml(appState, initialView = {}) {
     const docTags = document.getElementById("doc-tags");
     const docContent = document.getElementById("doc-content");
     const documentPanel = document.querySelector(".document");
-    const themeToggle = document.getElementById("theme-toggle");
+    const themeSelect = document.getElementById("theme-select");
     const presentToggle = document.getElementById("present-toggle");
     const paginateLevel = document.getElementById("paginate-level");
     const prevPage = document.getElementById("prev-page");
@@ -2142,10 +2142,12 @@ function renderHtml(appState, initialView = {}) {
       const aliasedTheme = themeAliases[requestedTheme] || requestedTheme;
       return themeIds.includes(aliasedTheme) ? aliasedTheme : null;
     }
-    function getNextTheme(theme) {
-      const currentIndex = themeIds.indexOf(normalizeTheme(theme) || "light");
-      return themeIds[(currentIndex + 1) % themeIds.length];
+    function populateThemeSelect() {
+      themeSelect.innerHTML = themeIds
+        .map((theme) => '<option value="' + escapeHtml(theme) + '">' + escapeHtml(themeMeta[theme].label) + "</option>")
+        .join("");
     }
+
     function applyTheme(theme) {
       const normalizedTheme = normalizeTheme(theme) || "light";
       const meta = themeMeta[normalizedTheme];
@@ -2158,10 +2160,7 @@ function renderHtml(appState, initialView = {}) {
       document.documentElement.setAttribute("data-theme", normalizedTheme);
       document.body.setAttribute("data-theme", normalizedTheme);
       document.documentElement.style.colorScheme = colorMode;
-      const nextTheme = getNextTheme(normalizedTheme);
-      themeToggle.textContent = meta.label;
-      themeToggle.title = "Next theme: " + themeMeta[nextTheme].label;
-      themeToggle.setAttribute("aria-label", themeToggle.title);
+      themeSelect.value = normalizedTheme;
       storeTheme(normalizedTheme);
     }
     function isExternalAsset(value) {
@@ -3188,9 +3187,8 @@ function renderHtml(appState, initialView = {}) {
       }
     });
 
-    themeToggle.addEventListener("click", async () => {
-      const currentTheme = document.documentElement.getAttribute("data-theme") || getInitialTheme();
-      applyTheme(getNextTheme(currentTheme));
+    themeSelect.addEventListener("change", async () => {
+      applyTheme(themeSelect.value);
       if (currentDocument) {
         await renderCurrentDocument();
       }
@@ -3244,6 +3242,7 @@ function renderHtml(appState, initialView = {}) {
 
     async function initialize() {
       populateRepoSelect();
+      populateThemeSelect();
       setNavPinned(getStoredFlag(navPinnedStorageKey, true));
       setTagPinned(getStoredFlag(tagPinnedStorageKey, false));
       applyTheme(getInitialTheme());
