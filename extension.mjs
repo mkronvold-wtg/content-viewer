@@ -783,7 +783,13 @@ function renderHtml(appState, initialView = {}) {
     main {
       display: grid;
       grid-template-columns: minmax(260px, 34%) 1fr;
-      min-height: calc(100vh - 97px);
+      height: calc(100vh - 97px);
+      min-height: 0;
+      position: relative;
+    }
+
+    body.nav-unpinned main {
+      grid-template-columns: 1fr;
     }
 
     .present-controls {
@@ -833,7 +839,7 @@ function renderHtml(appState, initialView = {}) {
     }
 
     body.presenting header,
-    body.presenting .results,
+    body.presenting .nav-rail,
     body.presenting .toolbar,
     body.presenting #doc-tags {
       display: none;
@@ -872,12 +878,152 @@ function renderHtml(appState, initialView = {}) {
       display: flex;
     }
 
-    .results {
+    .nav-rail {
+      display: flex;
+      min-width: 0;
+      min-height: 0;
       border-right: 1px solid var(--theme-border);
       background: var(--theme-chrome);
       color: var(--theme-chrome-text);
+      overflow: hidden;
+      z-index: 3;
+    }
+
+    .nav-rail-inner {
+      display: flex;
+      flex: 1;
+      min-height: 0;
+      min-width: 0;
+      flex-direction: column;
+    }
+
+    .nav-rail-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--theme-border-muted);
+    }
+
+    .nav-rail-title {
+      margin: 0;
+      color: var(--theme-chrome-text);
+      font-size: 13px;
+      font-weight: var(--font-weight-semibold, 600);
+      letter-spacing: 0.04em;
+      line-height: 18px;
+      text-transform: uppercase;
+    }
+
+    .nav-pin {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      width: 28px;
+      min-width: 28px;
+      height: 28px;
+      min-height: 28px;
+      padding: 0;
+      border-radius: 999px;
+      color: var(--theme-chrome-muted-text);
+    }
+
+    .nav-pin svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    .nav-pin:hover,
+    .nav-pin.is-active {
+      color: var(--theme-active-border);
+      border-color: color-mix(in srgb, var(--theme-active-border) 55%, transparent);
+      background: var(--theme-active-bg);
+    }
+
+    .nav-flyout-trigger {
+      display: none;
+    }
+
+    .results {
+      flex: 1;
+      min-height: 0;
       overflow: auto;
-      max-height: calc(100vh - 97px);
+      max-height: none;
+    }
+
+    body.nav-unpinned .nav-rail {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 48px;
+      min-width: 48px;
+      border-right: 0;
+      background: transparent;
+      overflow: visible;
+    }
+
+    body.nav-unpinned .nav-rail-inner {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: min(320px, calc(100vw - 32px));
+      height: 100%;
+      border: 1px solid var(--theme-border);
+      border-radius: 0 14px 14px 0;
+      background: color-mix(in srgb, var(--theme-chrome) 96%, transparent);
+      box-shadow: var(--theme-shadow);
+      opacity: 0;
+      pointer-events: none;
+      transform: translateX(-8px);
+      transition:
+        opacity 160ms ease,
+        transform 160ms ease,
+        border-color 160ms ease,
+        background-color 160ms ease;
+    }
+
+    body.nav-unpinned .nav-rail.is-open .nav-rail-inner,
+    body.nav-unpinned .nav-rail:hover .nav-rail-inner,
+    body.nav-unpinned .nav-rail:focus-within .nav-rail-inner {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateX(0);
+    }
+
+    body.nav-unpinned .nav-flyout-trigger {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 48px;
+      min-height: 112px;
+      border: 1px solid var(--theme-border);
+      border-radius: 0 14px 14px 0;
+      background: color-mix(in srgb, var(--theme-modal-surface-bg) 94%, transparent);
+      box-shadow: var(--theme-shadow);
+      color: var(--theme-text);
+      cursor: pointer;
+      padding: 8px 4px;
+      backdrop-filter: blur(14px);
+    }
+
+    body.nav-unpinned .nav-flyout-trigger-text {
+      font-size: 11px;
+      font-weight: var(--font-weight-semibold, 600);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      writing-mode: vertical-lr;
+    }
+
+    body.nav-unpinned .nav-rail.is-open .nav-flyout-trigger,
+    body.nav-unpinned .nav-rail:hover .nav-flyout-trigger,
+    body.nav-unpinned .nav-rail:focus-within .nav-flyout-trigger {
+      border-color: color-mix(in srgb, var(--theme-active-border) 55%, transparent);
+      background: color-mix(in srgb, var(--theme-active-bg) 92%, transparent);
+    }
+
+    body.nav-unpinned .document {
+      grid-column: 1 / -1;
     }
 
     .result {
@@ -953,7 +1099,7 @@ function renderHtml(appState, initialView = {}) {
       padding: 18px 22px 32px;
       background: var(--theme-surface);
       overflow: auto;
-      max-height: calc(100vh - 97px);
+      max-height: none;
     }
 
     .document h2 {
@@ -1183,13 +1329,43 @@ function renderHtml(appState, initialView = {}) {
 
     @media (max-width: 760px) {
       main {
-        grid-template-columns: 1fr;
+        display: block;
+        height: auto;
+      }
+
+      .nav-rail,
+      body.nav-unpinned .nav-rail {
+        position: static;
+        width: auto;
+        min-width: 0;
+        border-right: 0;
+        border-bottom: 1px solid var(--theme-border);
+        background: var(--theme-chrome);
+        overflow: hidden;
+      }
+
+      .nav-rail-inner,
+      body.nav-unpinned .nav-rail-inner {
+        position: static;
+        width: auto;
+        height: auto;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        box-shadow: none;
+        opacity: 1;
+        pointer-events: auto;
+        transform: none;
+      }
+
+      .nav-flyout-trigger,
+      .nav-pin,
+      body.nav-unpinned .nav-flyout-trigger {
+        display: none;
       }
 
       .results {
         max-height: 42vh;
-        border-right: 0;
-        border-bottom: 1px solid var(--theme-border);
       }
 
       .document {
@@ -1228,7 +1404,22 @@ function renderHtml(appState, initialView = {}) {
     <div id="status" class="meta">Indexing ${escapeHtml(initialRepoSlug)}...</div>
   </header>
   <main>
-    <section id="results" class="results" aria-label="Search results"></section>
+    <aside id="nav-rail" class="nav-rail is-pinned" aria-label="Document navigation">
+      <button id="nav-flyout-trigger" class="nav-flyout-trigger" type="button" aria-label="Open navigation panel" aria-expanded="true">
+        <span class="nav-flyout-trigger-text">Nav</span>
+      </button>
+      <div class="nav-rail-inner">
+        <div class="nav-rail-header">
+          <h2 class="nav-rail-title">Documents</h2>
+          <button id="nav-pin" class="nav-pin is-active" type="button" aria-label="Unpin navigation sidebar" aria-pressed="true" title="Unpin navigation sidebar">
+            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+              <path d="M5.4 1.5h5.2v1.7L9.7 5.5v2.8l1.8 1v1.2H8.6v4H7.4v-4H4.5V9.3l1.8-1V5.5L5.4 3.2V1.5Z" fill="currentColor"></path>
+            </svg>
+          </button>
+        </div>
+        <section id="results" class="results" aria-label="Search results"></section>
+      </div>
+    </aside>
     <section class="document" aria-label="Document">
       <div class="toolbar">
         <div>
@@ -1243,6 +1434,9 @@ function renderHtml(appState, initialView = {}) {
   <script>
     const searchInput = document.getElementById("search");
     const refreshButton = document.getElementById("refresh");
+    const navRail = document.getElementById("nav-rail");
+    const navPin = document.getElementById("nav-pin");
+    const navFlyoutTrigger = document.getElementById("nav-flyout-trigger");
     const resultsElement = document.getElementById("results");
     const statusElement = document.getElementById("status");
     const docTitle = document.getElementById("doc-title");
@@ -1274,6 +1468,7 @@ function renderHtml(appState, initialView = {}) {
     let lastWheelPageTurn = 0;
     let mermaidModulePromise = null;
     const themeStorageKey = "kpe-doc-dashboard-theme";
+    const navPinnedStorageKey = "content-viewer-nav-pinned";
     const themeIds = ${JSON.stringify(themeConfig.themeIds)};
     const themeAliases = ${JSON.stringify(themeConfig.themeAliases)};
     const themeMeta = ${JSON.stringify(themeConfig.themeMeta)};
@@ -1358,6 +1553,46 @@ function renderHtml(appState, initialView = {}) {
       try {
         localStorage.setItem(themeStorageKey, theme);
       } catch {
+      }
+    }
+
+    function getStoredFlag(key, defaultValue) {
+      try {
+        const stored = localStorage.getItem(key);
+        return stored === null ? defaultValue : stored === "1";
+      } catch {
+        return defaultValue;
+      }
+    }
+
+    function storeFlag(key, value) {
+      try {
+        localStorage.setItem(key, value ? "1" : "0");
+      } catch {
+      }
+    }
+
+    function setNavRailOpen(isOpen) {
+      navRail.classList.toggle("is-open", isOpen);
+      navFlyoutTrigger.setAttribute("aria-expanded", String(isOpen || navRail.classList.contains("is-pinned")));
+    }
+
+    function setNavPinned(isPinned) {
+      document.body.classList.toggle("nav-unpinned", !isPinned);
+      navRail.classList.toggle("is-pinned", isPinned);
+      navPin.classList.toggle("is-active", isPinned);
+      navPin.setAttribute("aria-pressed", String(isPinned));
+      const label = isPinned ? "Unpin navigation sidebar" : "Pin navigation sidebar";
+      navPin.setAttribute("aria-label", label);
+      navPin.title = label;
+      storeFlag(navPinnedStorageKey, isPinned);
+      setNavRailOpen(isPinned);
+    }
+
+    function handleNavRailBlur(event) {
+      const nextFocused = event.relatedTarget;
+      if (!(nextFocused instanceof Node) || !navRail.contains(nextFocused)) {
+        setNavRailOpen(false);
       }
     }
 
@@ -2356,6 +2591,19 @@ function renderHtml(appState, initialView = {}) {
       searchTimer = setTimeout(search, 180);
     });
 
+    navRail.addEventListener("mouseenter", () => setNavRailOpen(true));
+    navRail.addEventListener("mouseleave", () => {
+      if (!navRail.classList.contains("is-pinned")) {
+        setNavRailOpen(false);
+      }
+    });
+    navRail.addEventListener("focusin", () => setNavRailOpen(true));
+    navRail.addEventListener("focusout", handleNavRailBlur);
+    navFlyoutTrigger.addEventListener("click", () => setNavRailOpen(true));
+    navPin.addEventListener("click", () => {
+      setNavPinned(!navRail.classList.contains("is-pinned"));
+    });
+
     refreshButton.addEventListener("click", async () => {
       refreshButton.disabled = true;
       statusElement.textContent = "Pulling latest content and refreshing index...";
@@ -2453,6 +2701,7 @@ function renderHtml(appState, initialView = {}) {
 
     async function initialize() {
       populateRepoSelect();
+      setNavPinned(getStoredFlag(navPinnedStorageKey, true));
       applyTheme(getInitialTheme());
       updatePresentationControls();
       if (initialDocPath) {

@@ -17,6 +17,7 @@ This repository includes:
 - Mermaid rendering.
 - Tables, task lists, nested lists, blockquotes, code blocks, admonitions, links, bold, italic, and strikethrough.
 - Presentation mode with heading or `---` pagination.
+- Pin/unpin document navigation sidebar with browser-stored flyout behavior.
 - Shared canonical `mkronvold/themes` theme pack loaded from vendored theme metadata.
 - Multiple independent content repos addressed by URL prefix, for example `/kpe.content`.
 - Configurable per-repo base directory hiding, so `/data/Users/...` displays and shares as `Users/...`.
