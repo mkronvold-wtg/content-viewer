@@ -1208,6 +1208,28 @@ function renderHtml(appState, initialView = {}) {
       line-height: 16px;
     }
 
+    .tag-scope-toggle {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px;
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--theme-border-muted);
+    }
+
+    .tag-scope-button {
+      padding: 5px 8px;
+      border-radius: 999px;
+      color: var(--theme-chrome-muted-text);
+      font-size: 12px;
+      line-height: 16px;
+    }
+
+    .tag-scope-button.is-active {
+      border-color: color-mix(in srgb, var(--theme-active-border) 55%, transparent);
+      background: var(--theme-active-bg);
+      color: var(--theme-active-border);
+    }
+
     .tag-button {
       display: flex;
       align-items: center;
@@ -1675,6 +1697,10 @@ function renderHtml(appState, initialView = {}) {
             </svg>
           </button>
         </div>
+        <div class="tag-scope-toggle" role="group" aria-label="Tag scope">
+          <button class="tag-scope-button" type="button" data-tag-scope="document" aria-pressed="false">This document</button>
+          <button class="tag-scope-button is-active" type="button" data-tag-scope="all" aria-pressed="true">All documents</button>
+        </div>
         <section id="tag-list" class="tag-list" aria-label="Available tags"></section>
       </div>
     </aside>
@@ -1690,6 +1716,7 @@ function renderHtml(appState, initialView = {}) {
     const tagFlyoutTrigger = document.getElementById("tag-flyout-trigger");
     const tagList = document.getElementById("tag-list");
     const tagCount = document.getElementById("tag-count");
+    const tagScopeButtons = Array.from(document.querySelectorAll("[data-tag-scope]"));
     const resultsElement = document.getElementById("results");
     const statusElement = document.getElementById("status");
     const docTitle = document.getElementById("doc-title");
@@ -1713,6 +1740,8 @@ function renderHtml(appState, initialView = {}) {
     let activePath = initialDocPath;
     let searchTimer;
     let highlightTokens = [];
+    let allDocumentTags = [];
+    let tagScope = "all";
     let currentDocPath = "";
     let currentDocument = null;
     let currentPages = [{ title: "Document", content: "" }];
@@ -1842,13 +1871,44 @@ function renderHtml(appState, initialView = {}) {
       return directoryParts.length ? directoryParts.join("/") : "Repository root";
     }
 
-    function renderTagList(tags) {
-      const tagItems = Array.isArray(tags) ? tags : [];
-      tagCount.textContent = tagItems.length === 1 ? "1 tag" : tagItems.length + " tags";
+    function getCurrentDocumentTags() {
+      const tags = new Map();
+      for (const tag of currentDocument?.tags ?? []) {
+        const value = normalizeTag(tag);
+        if (value && !tags.has(value)) {
+          tags.set(value, { value, label: cleanTag(tag).replace(/^#/, "") || value });
+        }
+      }
+      return Array.from(tags.values()).sort((left, right) => left.label.localeCompare(right.label));
+    }
+
+    function setTagScope(scope) {
+      tagScope = scope === "document" ? "document" : "all";
+      for (const button of tagScopeButtons) {
+        const isActive = button.dataset.tagScope === tagScope;
+        button.classList.toggle("is-active", isActive);
+        button.setAttribute("aria-pressed", String(isActive));
+      }
+      renderActiveTagList();
+    }
+
+    function renderActiveTagList() {
+      const isDocumentScope = tagScope === "document";
+      const tagItems = isDocumentScope ? getCurrentDocumentTags() : allDocumentTags;
+      if (isDocumentScope && !currentDocument) {
+        tagCount.textContent = "No document selected";
+      } else if (isDocumentScope) {
+        tagCount.textContent = tagItems.length === 1 ? "1 tag in this document" : tagItems.length + " tags in this document";
+      } else {
+        tagCount.textContent = tagItems.length === 1 ? "1 tag across all documents" : tagItems.length + " tags across all documents";
+      }
       tagList.innerHTML = "";
 
       if (!tagItems.length) {
-        tagList.innerHTML = '<div class="empty" style="padding:12px;">No tags found.</div>';
+        const message = isDocumentScope
+          ? (currentDocument ? "No tags for this document." : "Open a document to see its tags.")
+          : "No tags found.";
+        tagList.innerHTML = '<div class="empty" style="padding:12px;">' + escapeHtml(message) + "</div>";
         return;
       }
 
@@ -1858,7 +1918,7 @@ function renderHtml(appState, initialView = {}) {
         button.className = "tag-button";
         button.innerHTML =
           '<span class="tag-button-label">' + escapeHtml(tag.label || tag.value) + "</span>" +
-          '<span class="tag-button-count">' + escapeHtml(tag.count) + "</span>";
+          (tag.count ? '<span class="tag-button-count">' + escapeHtml(tag.count) + "</span>" : "");
         button.addEventListener("click", () => addTagFilter(tag));
         tagList.appendChild(button);
       }
@@ -2870,7 +2930,8 @@ function renderHtml(appState, initialView = {}) {
         const data = await requestJson(apiUrl("/api/search", { q: query }));
         statusElement.textContent = data.count + " documents shown from " + data.total + " indexed markdown files in " + repoLabel(activeRepo);
         resultsElement.innerHTML = "";
-        renderTagList(data.tags);
+        allDocumentTags = Array.isArray(data.tags) ? data.tags : [];
+        renderActiveTagList();
 
         if (!data.results.length) {
           resultsElement.innerHTML = '<div class="empty" style="padding:12px;">No matching documents.</div>';
@@ -2916,6 +2977,7 @@ function renderHtml(appState, initialView = {}) {
         docTitle.textContent = doc.title;
         docPath.textContent = doc.path + " · " + new Date(doc.modified).toLocaleString();
         docTags.innerHTML = doc.tags.map((tag) => '<span class="pill">' + escapeHtml(tag) + "</span>").join("");
+        renderActiveTagList();
         if (options.presentMode) {
           document.body.classList.add("presenting");
           paginateLevel.value = "---";
@@ -2978,6 +3040,7 @@ function renderHtml(appState, initialView = {}) {
       docTags.innerHTML = "";
       docContent.className = "markdown empty";
       docContent.textContent = "Search results will appear on the left. Choose a result to view its markdown here.";
+      renderActiveTagList();
       updatePresentationControls();
     }
 
@@ -3012,6 +3075,9 @@ function renderHtml(appState, initialView = {}) {
     tagFlyoutTrigger.addEventListener("click", () => setTagRailOpen(true));
     tagPin.addEventListener("click", () => {
       setTagPinned(!tagRail.classList.contains("is-pinned"));
+    });
+    tagScopeButtons.forEach((button) => {
+      button.addEventListener("click", () => setTagScope(button.dataset.tagScope));
     });
 
     refreshButton.addEventListener("click", async () => {
