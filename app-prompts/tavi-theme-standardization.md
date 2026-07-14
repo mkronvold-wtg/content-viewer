@@ -15,7 +15,7 @@ Use these files from `mkronvold/themes`:
 
 The canonical theme IDs are:
 
-`light`, `sepia`, `spring`, `summer`, `sunshower`, `ocean`, `forest`, `autumn`, `autumn-light`, `coyote`, `coyote-dark`, `guinness`, `night`, `midnight`, `pine`, `obsidian`.
+`sunshower`, `light`, `sepia`, `summer`, `autumn-light`, `spring`, `coyote`, `autumn`, `coyote-dark`, `pine`, `midnight`, `forest`, `guinness`, `ocean`, `obsidian`.
 
 Preserve `dark` as a legacy alias for `ocean`.
 
