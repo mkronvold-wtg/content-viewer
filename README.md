@@ -14,7 +14,7 @@ This repository includes:
 - Markdown search across title, path, body, and frontmatter tags.
 - `tag:KT`-style frontmatter tag filtering.
 - Quoted phrase search, for example `"knowledge transfer"` keeps the phrase grouped.
-- Generated layer/tag indexes with a right-side metadata rail, all-document/current-document scope switch, and clickable `layer:value` or `tag:value` filters.
+- Generated layer/tag indexes, including Confluence labels as tags, with a right-side metadata rail, all-document/current-document scope switch, and clickable `layer:value` or `tag:value` filters.
 - Local image/SVG asset resolution.
 - Mermaid rendering.
 - Tables, task lists, nested lists, blockquotes, code blocks, admonitions, links, bold, italic, and strikethrough.

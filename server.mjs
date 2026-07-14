@@ -256,7 +256,7 @@ function extractFrontmatter(content) {
 
     const frontmatter = match[1];
     const titleMatch = frontmatter.match(/^title:\s*(.+)$/im);
-    const tags = extractFrontmatterList(frontmatter, ["tags", "tag"]);
+    const tags = extractFrontmatterList(frontmatter, ["tags", "tag", "labels", "label"]);
     const layers = extractFrontmatterList(frontmatter, ["layers", "layer"]);
 
     return {
