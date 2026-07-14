@@ -17,11 +17,17 @@ This repository includes:
 - Mermaid rendering.
 - Tables, task lists, nested lists, blockquotes, code blocks, admonitions, links, bold, italic, and strikethrough.
 - Presentation mode with heading or `---` pagination.
-- Shared canonical `mkronvold/themes` theme pack, including Light, Sepia, Spring, Summer, Sunshower, Ocean, Forest, Autumn, Autumn Light, Coyote, Coyote Dark, Guinness, Night, Midnight, Pine, and Obsidian.
+- Shared canonical `mkronvold/themes` theme pack loaded from vendored theme metadata.
 - Multiple independent content repos addressed by URL prefix, for example `/kpe.content`.
 - Configurable per-repo base directory hiding, so `/data/Users/...` displays and shares as `Users/...`.
 - Direct presentation links and a Share button that copies the current document URL.
 - On-demand refresh that runs `git pull --ff-only` and rebuilds the index.
+
+## Build and theme updates
+
+Run `npm run build` before committing or deploying. The build script refreshes `theme.css` and `theme.json` from `mkronvold/themes`, then runs the existing syntax checks.
+
+Theme refresh requires access to `mkronvold/themes` through `CONTENT_VIEWER_THEME_GITHUB_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN`, or an active `gh` login with access to that repository. Set `CONTENT_VIEWER_THEME_REF` to test a branch or tag other than `main`.
 
 ## Docker Compose quick start
 

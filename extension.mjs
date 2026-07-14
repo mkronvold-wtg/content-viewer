@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { execFile } from "node:child_process";
-import { promises as fs } from "node:fs";
+import { readFileSync, promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, URL } from "node:url";
 import { promisify } from "node:util";
@@ -13,6 +13,7 @@ const DEFAULT_CONTENT_ROOT = process.env.CONTENT_VIEWER_CONTENT_ROOT ?? path.joi
 const MERMAID_MODULE_PATH = path.join(EXTENSION_DIR, "node_modules", "mermaid", "dist", "mermaid.esm.min.mjs");
 const THEME_CSS_PATH = path.join(EXTENSION_DIR, "theme.css");
 const THEME_JSON_PATH = path.join(EXTENSION_DIR, "theme.json");
+const THEME_CONFIG = loadThemeConfig();
 const MAX_SNIPPET_LENGTH = 140;
 const MAX_INDEXED_FILE_BYTES = 1024 * 1024;
 const MIME_TYPES = new Map([
@@ -41,6 +42,25 @@ const SKIPPED_DIRECTORIES = new Set([
 const RESERVED_REPO_SLUGS = new Set(["api", "asset", "vendor", "favicon.ico"]);
 
 const servers = new Map();
+
+function loadThemeConfig() {
+    const themeConfig = JSON.parse(readFileSync(THEME_JSON_PATH, "utf8"));
+    const themes = themeConfig.themes ?? {};
+    const themeIds = Object.keys(themes);
+    const themeMeta = Object.fromEntries(themeIds.map((id) => [
+        id,
+        {
+            label: themes[id].label ?? id,
+            mode: themes[id].mode ?? "light",
+        },
+    ]));
+
+    return {
+        themeIds,
+        themeAliases: themeConfig.aliases ?? {},
+        themeMeta,
+    };
+}
 
 function toPosixPath(value) {
     return value.split(path.sep).join("/");
@@ -658,6 +678,7 @@ function parseRepoRoute(appState, pathname) {
 
 function renderHtml(appState, initialView = {}) {
     const repos = appState.repos.map(publicRepoConfig);
+    const themeConfig = THEME_CONFIG;
     const initialRepoSlug = initialView.repoSlug && appState.repoStates.has(initialView.repoSlug)
         ? initialView.repoSlug
         : appState.defaultRepoSlug;
@@ -1253,34 +1274,9 @@ function renderHtml(appState, initialView = {}) {
     let lastWheelPageTurn = 0;
     let mermaidModulePromise = null;
     const themeStorageKey = "kpe-doc-dashboard-theme";
-    const themeIds = ["light", "sepia", "spring", "summer", "sunshower", "ocean", "forest", "autumn", "autumn-light", "coyote", "coyote-dark", "guinness", "night", "midnight", "pine", "obsidian"];
-    const themeAliases = {
-      dark: "ocean",
-      dawn: "light",
-      linen: "sepia",
-      mist: "coyote",
-      "coyote-medium": "coyote",
-      "summer-nights": "coyote",
-      "winter-nights": "midnight",
-    };
-    const themeMeta = {
-      light: { label: "Light", mode: "light" },
-      sepia: { label: "Sepia", mode: "light" },
-      spring: { label: "Spring", mode: "light" },
-      summer: { label: "Summer", mode: "light" },
-      sunshower: { label: "Sunshower", mode: "light" },
-      ocean: { label: "Ocean", mode: "dark" },
-      forest: { label: "Forest", mode: "dark" },
-      autumn: { label: "Autumn", mode: "dark" },
-      "autumn-light": { label: "Autumn Light", mode: "light" },
-      coyote: { label: "Coyote", mode: "medium" },
-      "coyote-dark": { label: "Coyote Dark", mode: "dark" },
-      guinness: { label: "Guinness", mode: "dark" },
-      night: { label: "Night", mode: "dark" },
-      midnight: { label: "Midnight", mode: "dark" },
-      pine: { label: "Pine", mode: "dark" },
-      obsidian: { label: "Obsidian", mode: "dark" },
-    };
+    const themeIds = ${JSON.stringify(themeConfig.themeIds)};
+    const themeAliases = ${JSON.stringify(themeConfig.themeAliases)};
+    const themeMeta = ${JSON.stringify(themeConfig.themeMeta)};
     const wheelPageThreshold = 90;
     const wheelPageCooldownMs = 650;
 

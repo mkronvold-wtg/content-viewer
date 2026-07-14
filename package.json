@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "start": "node server.mjs",
+    "theme:update": "node scripts/update-theme.mjs",
+    "build": "npm run theme:update && npm run check",
     "check": "node --check server.mjs && node --check extension.mjs"
   },
   "dependencies": {
