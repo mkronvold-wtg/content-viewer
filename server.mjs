@@ -789,7 +789,7 @@ function renderHtml(appState, initialView = {}) {
     }
 
     body.nav-unpinned main {
-      grid-template-columns: 1fr;
+      grid-template-columns: 48px minmax(0, 1fr);
     }
 
     .present-controls {
@@ -880,6 +880,7 @@ function renderHtml(appState, initialView = {}) {
 
     .nav-rail {
       display: flex;
+      position: relative;
       min-width: 0;
       min-height: 0;
       border-right: 1px solid var(--theme-border);
@@ -954,8 +955,8 @@ function renderHtml(appState, initialView = {}) {
     }
 
     body.nav-unpinned .nav-rail {
-      position: absolute;
-      inset: 0 auto 0 0;
+      grid-column: 1;
+      grid-row: 1;
       width: 48px;
       min-width: 48px;
       border-right: 0;
@@ -1023,7 +1024,7 @@ function renderHtml(appState, initialView = {}) {
     }
 
     body.nav-unpinned .document {
-      grid-column: 1 / -1;
+      grid-column: 2 / -1;
     }
 
     .result {
