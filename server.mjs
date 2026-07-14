@@ -274,7 +274,7 @@ function extractFrontmatterList(frontmatter, keys) {
     const values = [];
     for (const key of keys) {
         const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        const blockMatch = frontmatter.match(new RegExp("^" + escapedKey + ":[ \\t]*\\r?\\n((?:[ \\t]+-[ \\t]+.+\\r?\\n?)+)", "im"));
+        const blockMatch = frontmatter.match(new RegExp("^" + escapedKey + ":[ \\t]*\\r?\\n((?:[ \\t]*-[ \\t]+.+\\r?\\n?)+)", "im"));
         if (blockMatch) {
             values.push(
                 ...blockMatch[1]
