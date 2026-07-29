@@ -120,10 +120,17 @@ function addBaseDir(displayPath, baseDir) {
     return normalizedBase ? `${normalizedBase}/${normalized}`.replace(/\/+$/, "") : normalized;
 }
 
+function repoTitleName(repo) {
+    const source = String(repo.url ?? "").replace(/[?#].*$/, "").replace(/\/+$/, "");
+    const match = source.match(/(?:^|[:/])([^/:/]+?)(?:\.git)?$/);
+    return match?.[1] || repo.label || repo.slug;
+}
+
 function publicRepoConfig(repo) {
     return {
         slug: repo.slug,
         label: repo.label,
+        titleName: repoTitleName(repo),
         baseDir: repo.baseDir,
     };
 }
@@ -779,12 +786,14 @@ function renderHtml(appState, initialView = {}) {
         : appState.defaultRepoSlug;
     const initialDocPath = initialView.docPath ?? "";
     const initialPresentMode = Boolean(initialView.presentMode && initialDocPath);
+    const initialRepo = appState.repoStates.get(initialRepoSlug)?.repo ?? appState.repos[0];
+    const initialPageTitle = initialDocPath ? `${repoTitleName(initialRepo)}/${initialDocPath}` : "KPE document dashboard";
     return `<!doctype html>
 <html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>KPE document dashboard</title>
+  <title>${escapeHtml(initialPageTitle)}</title>
   <link rel="stylesheet" href="/theme.css" />
   <style>
     :root {
@@ -2005,6 +2014,15 @@ function renderHtml(appState, initialView = {}) {
       return repo ? repo.label : slug;
     }
 
+    function repoTitleName(slug) {
+      const repo = repos.find((candidate) => candidate.slug === slug);
+      return repo?.titleName || repo?.label || slug;
+    }
+
+    function documentPageTitle(path, slug = activeRepo) {
+      return path ? repoTitleName(slug) + "/" + path : "KPE document dashboard";
+    }
+
     function repoPathPrefix(slug = activeRepo) {
       return "/" + encodeURIComponent(slug);
     }
@@ -3028,6 +3046,7 @@ function renderHtml(appState, initialView = {}) {
 
     async function openDocument(path, rerenderResults = true, options = {}) {
       activePath = path;
+      document.title = documentPageTitle(path);
       docTitle.textContent = "Loading...";
       docPath.textContent = path;
       docTags.innerHTML = "";
@@ -3039,6 +3058,7 @@ function renderHtml(appState, initialView = {}) {
         currentPageIndex = 0;
         docTitle.textContent = doc.title;
         docPath.textContent = doc.path + " · " + new Date(doc.modified).toLocaleString();
+        document.title = documentPageTitle(doc.path);
         docTags.innerHTML = doc.tags.map((tag) => '<span class="pill">' + escapeHtml(tag) + "</span>").join("");
         renderActiveTagList();
         if (options.presentMode) {
@@ -3086,7 +3106,7 @@ function renderHtml(appState, initialView = {}) {
           document.execCommand("copy");
           textarea.remove();
         }
-        statusElement.textContent = "Copied direct presentation link: " + link;
+        statusElement.textContent = "Copied direct document link: " + link;
       } catch (error) {
         statusElement.textContent = "Copy failed. Direct link: " + link;
       }
@@ -3096,6 +3116,7 @@ function renderHtml(appState, initialView = {}) {
       activePath = "";
       currentDocPath = "";
       currentDocument = null;
+      document.title = documentPageTitle("");
       currentPages = [{ title: "Document", content: "" }];
       currentPageIndex = 0;
       docTitle.textContent = "Select a document";
@@ -3413,7 +3434,7 @@ async function handleRequest(appState, req, res) {
             sendHtml(res, renderHtml(appState, {
                 repoSlug: repoRoute.repoSlug,
                 docPath: repoRoute.docPath,
-                presentMode: Boolean(repoRoute.docPath),
+                presentMode: false,
             }));
             return;
         }

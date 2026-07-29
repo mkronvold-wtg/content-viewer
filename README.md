@@ -23,7 +23,7 @@ This repository includes:
 - Shared canonical `mkronvold/themes` theme pack loaded from vendored theme metadata and selected from a theme pulldown.
 - Multiple independent content repos addressed by URL prefix, for example `/kpe.content`.
 - Configurable per-repo base directory hiding, so `/data/Users/...` displays and shares as `Users/...`.
-- Direct presentation links and a Share button that copies the current document URL.
+- Direct document links with repo/document page titles and a Share button that copies the current document URL.
 - On-demand refresh that runs `git pull --ff-only` and rebuilds the index.
 
 ## Build and theme updates
@@ -145,7 +145,7 @@ Separate containers are not required initially. Split later only if you want a d
 | --- | --- |
 | `GET /` | Web UI. |
 | `GET /<repo>` | Web UI scoped to one configured repo. |
-| `GET /<repo>/<path-to-document.md>` | Direct document link; opens that document in presentation mode. |
+| `GET /<repo>/<path-to-document.md>` | Direct document link; opens that document in the regular reading view. |
 | `GET /api/health` | Health/readiness details. |
 | `GET /api/repos` | List configured repos. |
 | `GET /api/search?repo=<repo>&q=...` | Search indexed Markdown. |

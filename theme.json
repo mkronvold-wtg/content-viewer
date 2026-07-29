@@ -472,8 +472,8 @@
         "modalSurfaceBg": "#112621"
       }
     },
-    "midnight": {
-      "label": "Midnight",
+    "ocean": {
+      "label": "Ocean",
       "mode": "dark",
       "colorScheme": "dark",
       "source": "Whiplash Midnight Blue, replacing Revu winter gradients with flat tokens.",
@@ -551,11 +551,11 @@
         "modalSurfaceBg": "#201813"
       }
     },
-    "ocean": {
-      "label": "Ocean",
+    "midnight": {
+      "label": "Midnight",
       "mode": "dark",
       "colorScheme": "dark",
-      "source": "content-viewer Ocean.",
+      "source": "Former content-viewer Ocean/Dark palette, renamed so Midnight is the darker blue theme.",
       "colors": {
         "bg": "#07111f",
         "chrome": "#07111f",
@@ -606,12 +606,12 @@
     }
   },
   "aliases": {
-    "dark": "ocean",
+    "dark": "midnight",
     "dawn": "light",
     "linen": "sepia",
     "mist": "coyote",
     "coyote-medium": "coyote",
     "summer-nights": "coyote",
-    "winter-nights": "midnight"
+    "winter-nights": "ocean"
   }
 }

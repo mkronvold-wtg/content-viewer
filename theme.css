@@ -501,8 +501,8 @@
   --theme-modal-backdrop: rgba(2, 6, 23, 0.78);
 }
 
-:root[data-theme='midnight'],
-[data-theme='midnight'] {
+:root[data-theme='ocean'],
+[data-theme='ocean'] {
   color-scheme: dark;
   --theme-bg: #071321;
   --theme-chrome: #0b1b2f;
@@ -651,8 +651,8 @@
   --theme-modal-backdrop: rgba(2, 6, 23, 0.78);
 }
 
-:root[data-theme='ocean'],
-[data-theme='ocean'] {
+:root[data-theme='midnight'],
+[data-theme='midnight'] {
   color-scheme: dark;
   --theme-bg: #07111f;
   --theme-chrome: #07111f;
