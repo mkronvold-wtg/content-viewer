@@ -32,6 +32,14 @@ Run `npm run build` before committing or deploying. The build script refreshes `
 
 Theme refresh requires access to `mkronvold/themes` through `CONTENT_VIEWER_THEME_GITHUB_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN`, or an active `gh` login with access to that repository. Set `CONTENT_VIEWER_THEME_REF` to test a branch or tag other than `main`.
 
+## Current deployment
+
+The current shared deployment runs on `dockerhost` and is served at:
+
+```text
+https://kpe-content.dev.e2open.com/
+```
+
 ## Docker Compose quick start
 
 1. Copy the example environment file:
