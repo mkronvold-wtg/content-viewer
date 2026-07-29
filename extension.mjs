@@ -887,7 +887,8 @@ function renderHtml(appState, initialView = {}) {
     main {
       display: grid;
       --rail-collapsed-size: 34px;
-      --nav-column: minmax(260px, 34%);
+      --nav-rail-width: 320px;
+      --nav-column: var(--nav-rail-width);
       --tag-column: var(--rail-collapsed-size);
       grid-template-columns: var(--nav-column) minmax(0, 1fr) var(--tag-column);
       height: calc(100vh - 97px);
@@ -1005,6 +1006,7 @@ function renderHtml(appState, initialView = {}) {
     .nav-rail {
       grid-column: 1;
       border-right: 1px solid var(--theme-border);
+      width: var(--nav-rail-width);
     }
 
     .tag-rail {
@@ -1020,6 +1022,42 @@ function renderHtml(appState, initialView = {}) {
       min-height: 0;
       min-width: 0;
       flex-direction: column;
+    }
+
+    .nav-resize-handle {
+      position: absolute;
+      top: 0;
+      right: 0;
+      z-index: 5;
+      width: 10px;
+      height: 100%;
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      cursor: col-resize;
+    }
+
+    .nav-resize-handle::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 2px;
+      height: 100%;
+      background: transparent;
+      transition: background-color 160ms ease;
+    }
+
+    .nav-resize-handle:hover::after,
+    .nav-resize-handle:focus-visible::after,
+    body.nav-resizing .nav-resize-handle::after {
+      background: var(--theme-active-border);
+    }
+
+    body.nav-resizing {
+      cursor: col-resize;
+      user-select: none;
     }
 
     .nav-rail-header,
@@ -1100,7 +1138,7 @@ function renderHtml(appState, initialView = {}) {
       position: absolute;
       top: 0;
       left: 0;
-      width: min(320px, calc(100vw - 32px));
+      width: min(var(--nav-rail-width), calc(100vw - 32px));
       height: 100%;
       border: 1px solid var(--theme-border);
       border-radius: 0 14px 14px 0;
@@ -1649,6 +1687,10 @@ function renderHtml(appState, initialView = {}) {
         transform: none;
       }
 
+      .nav-resize-handle {
+        display: none;
+      }
+
       .nav-flyout-trigger,
       .tag-flyout-trigger,
       .nav-pin,
@@ -1713,6 +1755,7 @@ function renderHtml(appState, initialView = {}) {
           </button>
         </div>
         <section id="results" class="results" aria-label="Search results"></section>
+        <button id="nav-resize-handle" class="nav-resize-handle" type="button" aria-label="Resize document navigation sidebar" title="Drag to resize document navigation sidebar"></button>
       </div>
     </aside>
     <section class="document" aria-label="Document">
@@ -1758,6 +1801,7 @@ function renderHtml(appState, initialView = {}) {
     const navRail = document.getElementById("nav-rail");
     const navPin = document.getElementById("nav-pin");
     const navFlyoutTrigger = document.getElementById("nav-flyout-trigger");
+    const navResizeHandle = document.getElementById("nav-resize-handle");
     const tagRail = document.getElementById("tag-rail");
     const tagPin = document.getElementById("tag-pin");
     const tagFlyoutTrigger = document.getElementById("tag-flyout-trigger");
@@ -1800,6 +1844,7 @@ function renderHtml(appState, initialView = {}) {
     let mermaidModulePromise = null;
     const themeStorageKey = "kpe-doc-dashboard-theme";
     const navPinnedStorageKey = "content-viewer-nav-pinned";
+    const navWidthStorageKey = "content-viewer-nav-width";
     const tagPinnedStorageKey = "content-viewer-tag-pinned";
     const themeIds = ${JSON.stringify(themeConfig.themeIds)};
     const themeAliases = ${JSON.stringify(themeConfig.themeAliases)};
@@ -2076,6 +2121,31 @@ function renderHtml(appState, initialView = {}) {
       }
     }
 
+    function clampNavWidth(value) {
+      const maxWidth = Math.max(260, Math.min(620, window.innerWidth - 120));
+      return Math.min(maxWidth, Math.max(220, Math.round(value)));
+    }
+
+    function applyNavWidth(width) {
+      document.querySelector("main")?.style.setProperty("--nav-rail-width", clampNavWidth(width) + "px");
+    }
+
+    function getStoredNavWidth() {
+      try {
+        const stored = Number(localStorage.getItem(navWidthStorageKey));
+        return Number.isFinite(stored) && stored > 0 ? stored : 320;
+      } catch {
+        return 320;
+      }
+    }
+
+    function storeNavWidth(width) {
+      try {
+        localStorage.setItem(navWidthStorageKey, String(clampNavWidth(width)));
+      } catch {
+      }
+    }
+
     function setNavRailOpen(isOpen) {
       if (isOpen) {
         navRail.classList.remove("suppress-open");
@@ -2117,6 +2187,31 @@ function renderHtml(appState, initialView = {}) {
       storeFlag(tagPinnedStorageKey, isPinned);
       tagRail.classList.toggle("suppress-open", !isPinned);
       setTagRailOpen(isPinned);
+    }
+
+    function startNavResize(event) {
+      event.preventDefault();
+      const startX = event.clientX;
+      const startWidth = navRail.querySelector(".nav-rail-inner")?.getBoundingClientRect().width || getStoredNavWidth();
+      document.body.classList.add("nav-resizing");
+
+      function onPointerMove(moveEvent) {
+        applyNavWidth(startWidth + moveEvent.clientX - startX);
+      }
+
+      function onPointerUp(moveEvent) {
+        const nextWidth = startWidth + moveEvent.clientX - startX;
+        applyNavWidth(nextWidth);
+        storeNavWidth(nextWidth);
+        document.body.classList.remove("nav-resizing");
+        window.removeEventListener("pointermove", onPointerMove);
+        window.removeEventListener("pointerup", onPointerUp);
+        window.removeEventListener("pointercancel", onPointerUp);
+      }
+
+      window.addEventListener("pointermove", onPointerMove);
+      window.addEventListener("pointerup", onPointerUp);
+      window.addEventListener("pointercancel", onPointerUp);
     }
 
     function handleNavRailBlur(event) {
@@ -3133,19 +3228,27 @@ function renderHtml(appState, initialView = {}) {
       searchTimer = setTimeout(search, 180);
     });
 
-    navRail.addEventListener("mouseenter", () => setNavRailOpen(true));
+    navRail.addEventListener("mouseenter", () => {
+      if (!navRail.classList.contains("suppress-open")) {
+        setNavRailOpen(true);
+      }
+    });
     navRail.addEventListener("mouseleave", () => {
-      navRail.classList.remove("suppress-open");
       if (!navRail.classList.contains("is-pinned")) {
         setNavRailOpen(false);
       }
     });
-    navRail.addEventListener("focusin", () => setNavRailOpen(true));
+    navRail.addEventListener("focusin", () => {
+      if (!navRail.classList.contains("suppress-open")) {
+        setNavRailOpen(true);
+      }
+    });
     navRail.addEventListener("focusout", handleNavRailBlur);
     navFlyoutTrigger.addEventListener("click", () => setNavRailOpen(true));
     navPin.addEventListener("click", () => {
       setNavPinned(!navRail.classList.contains("is-pinned"));
     });
+    navResizeHandle.addEventListener("pointerdown", startNavResize);
 
     tagRail.addEventListener("mouseenter", () => setTagRailOpen(true));
     tagRail.addEventListener("mouseleave", () => {
@@ -3264,6 +3367,7 @@ function renderHtml(appState, initialView = {}) {
     async function initialize() {
       populateRepoSelect();
       populateThemeSelect();
+      applyNavWidth(getStoredNavWidth());
       setNavPinned(getStoredFlag(navPinnedStorageKey, true));
       setTagPinned(getStoredFlag(tagPinnedStorageKey, false));
       applyTheme(getInitialTheme());
