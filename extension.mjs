@@ -127,6 +127,10 @@ function repoTitleName(repo) {
     return match?.[1] || repo.label || repo.slug;
 }
 
+function documentTitleName(documentPath) {
+    return String(documentPath ?? "").replaceAll("\\", "/").split("/").filter(Boolean).at(-1) ?? "";
+}
+
 function publicRepoConfig(repo) {
     return {
         slug: repo.slug,
@@ -787,7 +791,7 @@ function renderHtml(appState, initialView = {}) {
     const initialDocPath = initialView.docPath ?? "";
     const initialPresentMode = Boolean(initialView.presentMode && initialDocPath);
     const initialRepo = appState.repoStates.get(initialRepoSlug)?.repo ?? appState.repos[0];
-    const initialPageTitle = initialDocPath ? `${repoTitleName(initialRepo)}/${initialDocPath}` : "KPE document dashboard";
+    const initialPageTitle = initialDocPath ? `${repoTitleName(initialRepo)}/${documentTitleName(initialDocPath)}` : "KPE document dashboard";
     return `<!doctype html>
 <html>
 <head>
@@ -2065,7 +2069,8 @@ function renderHtml(appState, initialView = {}) {
     }
 
     function documentPageTitle(path, slug = activeRepo) {
-      return path ? repoTitleName(slug) + "/" + path : "KPE document dashboard";
+      const filename = String(path ?? "").split("/").filter(Boolean).at(-1);
+      return filename ? repoTitleName(slug) + "/" + filename : "KPE document dashboard";
     }
 
     function repoPathPrefix(slug = activeRepo) {

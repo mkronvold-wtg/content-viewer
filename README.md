@@ -23,7 +23,7 @@ This repository includes:
 - Shared canonical `mkronvold/themes` theme pack loaded from vendored theme metadata and selected from a theme pulldown.
 - Multiple independent content repos addressed by URL prefix, for example `/kpe.content`.
 - Configurable per-repo base directory hiding, so `/data/Users/...` displays and shares as `Users/...`.
-- Direct document links with repo/document page titles and a Share button that copies the current document URL.
+- Direct document links with `repo/filename` page titles and a Share button that copies the current document URL.
 - On-demand refresh that runs `git pull --ff-only` and rebuilds the index.
 
 ## Build and theme updates
