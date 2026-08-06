@@ -144,8 +144,11 @@ image content ID; it does not claim a registry manifest digest exists.
 
 The workflow's SARIF upload is best-effort only where GitHub grants
 `security-events: write`; fork pull requests skip the upload while still
-running the scanner and enforcement. The pinned dependency-review workflow
-blocks newly introduced high/critical runtime dependency vulnerabilities.
+running the scanner and enforcement. The SHA-pinned dependency-review action
+reads its policy configuration from the immutable pull-request base SHA, while
+the action evaluates the pull request through GitHub's API. It blocks newly
+introduced high/critical runtime dependency vulnerabilities without trusting
+fork-supplied configuration.
 
 GitHub administrators must require the three named checks documented in the
 README before treating them as a merge gate. This repository has not inspected
