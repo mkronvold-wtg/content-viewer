@@ -105,6 +105,45 @@ function finding(id, severity, installedVersion = '1.0.0') {
   };
 }
 
+function yamlMappingBlock(source, declaration) {
+  const lines = source.split(/\r?\n/);
+  const start = lines.findIndex((line) => declaration.test(line));
+  assert.notEqual(start, -1, `Missing YAML declaration matching ${declaration}`);
+  const indentation = lines[start].match(/^(\s*)/)[1].length;
+  let end = lines.length;
+  for (let index = start + 1; index < lines.length; index += 1) {
+    if (/^\s*(?:#.*)?$/.test(lines[index])) continue;
+    if (lines[index].match(/^(\s*)/)[1].length <= indentation) {
+      end = index;
+      break;
+    }
+  }
+  return lines.slice(start + 1, end).join('\n');
+}
+
+function yamlDirectMapping(block) {
+  const lines = block.split('\n');
+  const firstEntry = lines.find((line) => /^\s*[^#\s][^:]*:\s*/.test(line));
+  assert.ok(firstEntry, 'Expected YAML mapping entries');
+  const indentation = firstEntry.match(/^(\s*)/)[1].length;
+  return Object.fromEntries(lines.flatMap((line) => {
+    const match = line.match(new RegExp(`^\\s{${indentation}}([^:#\\s]+)\\s*:\\s*([^#\\s]+)`));
+    if (!match) return [];
+    return [[match[1], match[2].replace(/^['"]|['"]$/g, '')]];
+  }));
+}
+
+function yamlDirectKeys(block) {
+  const lines = block.split('\n');
+  const firstEntry = lines.find((line) => /^\s*[^#\s][^:]*:/.test(line));
+  assert.ok(firstEntry, 'Expected YAML mapping entries');
+  const indentation = firstEntry.match(/^(\s*)/)[1].length;
+  return lines.flatMap((line) => {
+    const match = line.match(new RegExp(`^\\s{${indentation}}([^:#\\s]+)\\s*:`));
+    return match ? [match[1]] : [];
+  });
+}
+
 test('parses the actual pinned runtime tag and changes only its digest', () => {
   const parsed = parsePinnedNodeDockerfile(dockerfile);
   assert.equal(parsed.tag, '26-bookworm-slim');
@@ -293,13 +332,23 @@ test('remediation workflow accepts only scheduled trusted execution and never en
   assert.doesNotMatch(workflow, /^\s*workflow_dispatch:/m);
   assert.match(workflow, /create-pull-request:[\s\S]*?github\.event_name == 'schedule'/);
   assert.doesNotMatch(workflow, /enable-auto-merge|gh pr merge|--auto/);
+  const globalPermissions = yamlDirectMapping(
+    yamlMappingBlock(workflow, /^permissions\s*:\s*(?:#.*)?$/m),
+  );
+  assert.deepEqual(globalPermissions, {
+    contents: 'read',
+    'pull-requests': 'read',
+  });
+  const jobs = yamlMappingBlock(workflow, /^jobs\s*:\s*(?:#.*)?$/m);
+  const scan = yamlMappingBlock(jobs, /^\s+scan\s*:\s*(?:#.*)?$/m);
+  assert.equal(yamlDirectKeys(scan).includes('permissions'), false);
   assert.match(
-    workflow,
-    /scan:[\s\S]*?Check out current main with read-only fetch credentials[\s\S]*?persist-credentials: true[\s\S]*?git fetch --no-tags origin main/,
+    scan,
+    /Check out current main with read-only fetch credentials[\s\S]*?persist-credentials:\s*true[\s\S]*?git fetch --no-tags origin main/,
   );
   assert.doesNotMatch(
-    workflow,
-    /scan:[\s\S]*?(?:token:\s*\$\{\{[^}]+\}\}|https:\/\/[^@\s]+@github\.com)/,
+    scan,
+    /(?:token\s*:\s*\$\{\{[^}]+\}\}|https:\/\/[^@\s]+@github\.com)/,
   );
   const actions = [...workflow.matchAll(/^\s*uses:\s*[^@\s]+@([a-f0-9]{40})(?:\s+#.*)?$/gm)];
   assert.ok(actions.length > 0);
