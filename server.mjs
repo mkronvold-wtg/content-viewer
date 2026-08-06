@@ -2188,6 +2188,13 @@ function renderHtml(appState, initialView = {}) {
       return window.location.origin + repoPathPrefix(slug) + (encodedPath ? "/" + encodedPath : "");
     }
 
+    function documentNavigationUrl(path) {
+      const currentUrl = new URL(window.location.href);
+      const encodedPath = encodeDocumentPath(path);
+      currentUrl.pathname = repoPathPrefix(activeRepo) + (encodedPath ? "/" + encodedPath : "");
+      return currentUrl;
+    }
+
     function updatePresentationUrl(isPresenting) {
       if (!window.history?.replaceState) {
         return;
@@ -3309,7 +3316,7 @@ function renderHtml(appState, initialView = {}) {
         }
         await renderCurrentDocument();
         if (!options.skipHistory && window.history?.pushState) {
-          window.history.pushState({ repo: activeRepo, path }, "", documentUrl(path));
+          window.history.pushState({ repo: activeRepo, path }, "", documentNavigationUrl(path));
         }
         if (rerenderResults) {
           await search();
