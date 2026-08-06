@@ -13,7 +13,7 @@ repository was run against a deployment target.
 | `docker-compose.yml` | Local Compose builds the service, tags it `content-viewer:local`, binds `127.0.0.1:8080:8080`, and mounts the logical named volume `content-viewer-content` at `/app/content`. |
 | `docker-compose.npm.yml` | The dockerhost/NPM-proxy target builds the service, mounts the same logical volume at `/app/content`, exposes port `8080` only to Compose networks, and joins the external network named `npm-proxy`. It has no host `ports` mapping. |
 | `README.md` | Documents the local command `docker compose up -d --build`; it does not define an authoritative dockerhost project name or invocation. |
-| `package.json` | `npm run build` and `npm run check` syntax-check `server.mjs` and `extension.mjs` using committed inputs. Theme refresh is a separate maintenance action that requires an immutable full upstream commit SHA, as described in `README.md`. |
+| `package.json` | `npm run build` and `npm run check` syntax-check `server.mjs` and `extension.mjs` using committed inputs. `npm run test:contracts` runs the explicit deterministic Node contract suite, and `npm run test:container` smoke-tests a supplied final image with an isolated no-network container and volume. Theme refresh is a separate maintenance action that requires an immutable full upstream commit SHA, as described in `README.md`. |
 | `.env.example` | Configures the Git-backed content clone under `/app/content` and identifies `CONTENT_VIEWER_GITHUB_TOKEN` as a read-only content-repository credential. |
 | `server.mjs` | Defines the routes and clone/refresh behavior in the route matrix below. |
 
@@ -116,14 +116,16 @@ repository neither configures nor proves those controls.
 
 ## Promotion gates and external handoffs
 
-Phase 0 does not authorize automatic promotion. A later CI/artifact phase may
-enable it only after the evidence checklist and copied-volume rehearsal are
+Phase 0 does not authorize automatic promotion. The repository now supplies a
+deterministic validation workflow, but it does not configure GitHub repository
+settings or authorize automatic promotion. A later CI/artifact phase may enable
+promotion only after the evidence checklist and copied-volume rehearsal are
 available, and only when required checks and immutable digest handling are
 enforced by the owners below.
 
 | External owner | Required capability or decision | Phase 0 status |
 | --- | --- | --- |
-| GitHub administrators | Configure protected-branch required checks; enable and configure Dependabot; decide auto-merge policy; grant only the workflow permissions required for publishing, attestations, and status reporting; permit Actions workflows to use those permissions. | External handoff required; no GitHub repository settings were inspected or changed. |
+| GitHub administrators | Require the `Validate` status check for `main`; enable and configure merge queue if used; enable Dependabot alerts and security updates; and decide a narrowly scoped auto-merge policy. Do not grant broad workflow write or auto-merge privileges. | External handoff required; no GitHub repository settings were inspected or changed. |
 | Registry/Xray owner | Provide a registry namespace and immutable-digest or immutable-tag policy; permit CI to publish and retrieve the final image by digest; configure Xray or the approved scanner to emit final-image JSON and policy status; define retention and access controls for scan evidence. | External handoff required; no registry, Xray, or scan result was inspected. |
 | Dockerhost/proxy owner | Supply the actual Compose project, service container, and physical volume; own backup/restore and copied-volume rehearsal; verify proxy authorization, rate limits, TLS/routing, and the trusted network boundary for public refresh; deploy only approved immutable digests once available. | External handoff required; no dockerhost or proxy was accessed. |
 
