@@ -45,6 +45,29 @@ CONTENT_VIEWER_THEME_COMMIT=<40-character-upstream-commit-sha> npm run theme:upd
 The refresh command rejects branch names, tags, abbreviated SHAs, and an unset
 commit. Review and commit the resulting `theme.css` and `theme.json`.
 
+## Validation and CI
+
+Use Node 26 and run the deterministic contributor gate:
+
+```sh
+npm ci
+npm run build
+npm test
+docker build --tag content-viewer:ci .
+npm run test:container
+```
+
+The final-image smoke test requires a reachable Docker daemon. It runs the
+already-built image with an isolated volume and no Docker network, waits for
+the local health endpoint instead of sleeping, verifies the actual service UID
+is non-root, and cleans up only its own container and volume. It needs no
+content-repository credentials.
+
+`.github/workflows/validate.yml` runs this gate for pull requests to and pushes
+to `main`. GitHub branch protection, required checks, merge queue, Dependabot
+alerts/security updates, and any narrowly-scoped Dependabot auto-merge policy
+remain administrator actions; this repository does not claim they are enabled.
+
 ## Current deployment
 
 The current shared deployment runs on `dockerhost` and is served at:
