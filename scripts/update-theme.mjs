@@ -4,9 +4,15 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const SOURCE_REPO = "mkronvold/themes";
-const SOURCE_REF = process.env.CONTENT_VIEWER_THEME_REF || "main";
+const SOURCE_COMMIT = process.env.CONTENT_VIEWER_THEME_COMMIT;
 const THEME_FILES = ["theme.css", "theme.json"];
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+if (!/^[0-9a-f]{40}$/i.test(SOURCE_COMMIT ?? "")) {
+    throw new Error(
+        "CONTENT_VIEWER_THEME_COMMIT must be the full 40-character commit SHA from mkronvold/themes",
+    );
+}
 
 function decodeContent(payload, filePath) {
     if (payload.encoding !== "base64" || typeof payload.content !== "string") {
@@ -17,7 +23,7 @@ function decodeContent(payload, filePath) {
 }
 
 async function fetchWithToken(filePath, token) {
-    const url = `https://api.github.com/repos/${SOURCE_REPO}/contents/${encodeURIComponent(filePath)}?ref=${encodeURIComponent(SOURCE_REF)}`;
+    const url = `https://api.github.com/repos/${SOURCE_REPO}/contents/${encodeURIComponent(filePath)}?ref=${encodeURIComponent(SOURCE_COMMIT)}`;
     const response = await fetch(url, {
         headers: {
             Accept: "application/vnd.github+json",
@@ -44,7 +50,7 @@ function fetchWithGh(filePath) {
         "GET",
         `repos/${SOURCE_REPO}/contents/${filePath}`,
         "-f",
-        `ref=${SOURCE_REF}`,
+        `ref=${SOURCE_COMMIT}`,
     ], {
         cwd: ROOT_DIR,
         encoding: "utf8",
@@ -68,12 +74,13 @@ async function fetchThemeFile(filePath) {
     return fetchWithGh(filePath);
 }
 
-const fetchedFiles = new Map();
+const fetchedFiles = new Map(
+    await Promise.all(THEME_FILES.map(async (filePath) => [filePath, await fetchThemeFile(filePath)])),
+);
 for (const filePath of THEME_FILES) {
-    const content = await fetchThemeFile(filePath);
-    fetchedFiles.set(filePath, content);
+    const content = fetchedFiles.get(filePath);
     writeFileSync(path.join(ROOT_DIR, filePath), content, "utf8");
-    console.log(`Updated ${filePath} from ${SOURCE_REPO}@${SOURCE_REF}`);
+    console.log(`Updated ${filePath} from ${SOURCE_REPO}@${SOURCE_COMMIT}`);
 }
 
 const themeJson = JSON.parse(fetchedFiles.get("theme.json"));

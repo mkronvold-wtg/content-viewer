@@ -29,9 +29,21 @@ This repository includes:
 
 ## Build and theme updates
 
-Run `npm run build` before committing or deploying. The build script refreshes `theme.css` and `theme.json` from `mkronvold/themes`, then runs the existing syntax checks.
+This project supports Node `>=26.0.0 <27.0.0`; `.node-version` selects the
+baseline release. Run `npm run build` before committing or deploying. It uses
+only committed inputs and runs the existing syntax checks.
 
-Theme refresh requires access to `mkronvold/themes` through `CONTENT_VIEWER_THEME_GITHUB_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN`, or an active `gh` login with access to that repository. Set `CONTENT_VIEWER_THEME_REF` to test a branch or tag other than `main`.
+Theme refresh is an explicit maintenance action, not part of the build. It
+requires a full immutable commit SHA and access to `mkronvold/themes` through
+`CONTENT_VIEWER_THEME_GITHUB_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN`, or an active
+`gh` login with access to that repository:
+
+```sh
+CONTENT_VIEWER_THEME_COMMIT=<40-character-upstream-commit-sha> npm run theme:update
+```
+
+The refresh command rejects branch names, tags, abbreviated SHAs, and an unset
+commit. Review and commit the resulting `theme.css` and `theme.json`.
 
 ## Current deployment
 

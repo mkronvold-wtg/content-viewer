@@ -9,11 +9,11 @@ repository was run against a deployment target.
 
 | Source | Verified repository behavior |
 | --- | --- |
-| `Dockerfile` | Builds from `node:22-alpine`, installs Git, runs `npm ci --omit=dev --ignore-scripts`, creates `/app/content`, changes its ownership to `node:node`, runs as `USER node`, and health-checks `GET /api/health`. |
+| `Dockerfile` | Uses the official `node:26-bookworm-slim` image pinned to an immutable digest for separate dependency and runtime stages. The runtime installs Git and CA certificates, retains only production dependencies and required server/theme assets, creates `/app/content` owned by `node`, runs as `USER node`, and health-checks `GET /api/health`. |
 | `docker-compose.yml` | Local Compose builds the service, tags it `content-viewer:local`, binds `127.0.0.1:8080:8080`, and mounts the logical named volume `content-viewer-content` at `/app/content`. |
 | `docker-compose.npm.yml` | The dockerhost/NPM-proxy target builds the service, mounts the same logical volume at `/app/content`, exposes port `8080` only to Compose networks, and joins the external network named `npm-proxy`. It has no host `ports` mapping. |
 | `README.md` | Documents the local command `docker compose up -d --build`; it does not define an authoritative dockerhost project name or invocation. |
-| `package.json` | `npm run check` syntax-checks `server.mjs` and `extension.mjs`. `npm run build` first refreshes the shared theme from `mkronvold/themes`, so it requires the access described in `README.md` and is not a Phase 0 validation command. |
+| `package.json` | `npm run build` and `npm run check` syntax-check `server.mjs` and `extension.mjs` using committed inputs. Theme refresh is a separate maintenance action that requires an immutable full upstream commit SHA, as described in `README.md`. |
 | `.env.example` | Configures the Git-backed content clone under `/app/content` and identifies `CONTENT_VIEWER_GITHUB_TOKEN` as a read-only content-repository credential. |
 | `server.mjs` | Defines the routes and clone/refresh behavior in the route matrix below. |
 
