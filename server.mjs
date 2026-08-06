@@ -130,6 +130,38 @@ function documentTitleName(documentPath) {
     return String(documentPath ?? "").replaceAll("\\", "/").split("/").filter(Boolean).at(-1) ?? "";
 }
 
+function gitWebUrl(remoteUrl) {
+    const remote = String(remoteUrl ?? "").trim();
+    if (!remote) {
+        return "";
+    }
+
+    try {
+        const parsed = new URL(remote);
+        if (!["http:", "https:", "ssh:"].includes(parsed.protocol)) {
+            return "";
+        }
+        const remotePath = parsed.pathname.replace(/^\/+/, "").replace(/\/+$/, "").replace(/\.git$/i, "");
+        return remotePath ? `https://${parsed.host}/${remotePath}` : "";
+    } catch {
+        const scpStyleMatch = remote.match(/^(?:[^@/\s]+@)?([^:/\s]+):(.+)$/);
+        if (!scpStyleMatch) {
+            return "";
+        }
+        const [, host, remotePath] = scpStyleMatch;
+        return `https://${host}/${remotePath.replace(/^\/+/, "").replace(/\/+$/, "").replace(/\.git$/i, "")}`;
+    }
+}
+
+function sourceDocumentUrl(repo, sourcePath) {
+    const repositoryUrl = gitWebUrl(repo.url);
+    const encodedBranch = String(repo.branch ?? "main").split("/").filter(Boolean).map(encodeURIComponent).join("/");
+    const encodedPath = String(sourcePath ?? "").replaceAll("\\", "/").split("/").filter(Boolean).map(encodeURIComponent).join("/");
+    return repositoryUrl && encodedBranch && encodedPath
+        ? `${repositoryUrl}/blob/${encodedBranch}/${encodedPath}`
+        : "";
+}
+
 function publicRepoConfig(repo) {
     return {
         slug: repo.slug,
@@ -226,6 +258,18 @@ async function runGit(args) {
         const output = `${error.stdout ?? ""}${error.stderr ?? ""}`.trim();
         const command = ["git", ...args].join(" ");
         throw new Error(output ? `${command} failed:\n${output}` : `${command} failed`);
+    }
+}
+
+async function getGitRemoteUrl(repoPath) {
+    try {
+        return await runGit(["-C", repoPath, "remote", "get-url", "origin"]);
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (message.includes("No such remote 'origin'") || message.includes("not a git repository")) {
+            return "";
+        }
+        throw error;
     }
 }
 
@@ -1740,6 +1784,7 @@ function renderHtml(appState, initialView = {}) {
       <select id="repo-select" class="repo-select" aria-label="Content repository"></select>
       <input id="search" type="search" placeholder="Search title, path, content, or tag:KT..." autocomplete="off" />
       <button id="refresh" type="button">Refresh</button>
+      <button id="source-link" type="button" title="Copy source Git URL" disabled>Source</button>
       <button id="share-link" type="button">Share</button>
     </div>
     <div id="status" class="meta">Indexing ${escapeHtml(initialRepoSlug)}...</div>
@@ -1827,6 +1872,7 @@ function renderHtml(appState, initialView = {}) {
     const nextPage = document.getElementById("next-page");
     const pageIndicator = document.getElementById("page-indicator");
     const repoSelect = document.getElementById("repo-select");
+    const sourceButton = document.getElementById("source-link");
     const shareButton = document.getElementById("share-link");
     const repos = ${JSON.stringify(repos)};
     const initialRepoSlug = ${JSON.stringify(initialRepoSlug)};
@@ -3146,6 +3192,8 @@ function renderHtml(appState, initialView = {}) {
 
     async function openDocument(path, rerenderResults = true, options = {}) {
       activePath = path;
+      currentDocument = null;
+      sourceButton.disabled = true;
       document.title = documentPageTitle(path);
       docTitle.textContent = "Loading...";
       docPath.textContent = path;
@@ -3155,6 +3203,7 @@ function renderHtml(appState, initialView = {}) {
       try {
         const doc = await requestJson(apiUrl("/api/doc", { path }));
         currentDocument = doc;
+        sourceButton.disabled = !doc.sourceUrl;
         currentPageIndex = 0;
         docTitle.textContent = doc.title;
         docPath.textContent = doc.path + " · " + new Date(doc.modified).toLocaleString();
@@ -3212,10 +3261,37 @@ function renderHtml(appState, initialView = {}) {
       }
     }
 
+    async function copySourceUrl() {
+      const link = currentDocument?.sourceUrl;
+      if (!link) {
+        statusElement.textContent = "The source Git URL is unavailable for this document.";
+        return;
+      }
+
+      try {
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(link);
+        } else {
+          const textarea = document.createElement("textarea");
+          textarea.value = link;
+          textarea.style.position = "fixed";
+          textarea.style.left = "-9999px";
+          document.body.appendChild(textarea);
+          textarea.select();
+          document.execCommand("copy");
+          textarea.remove();
+        }
+        statusElement.textContent = "Copied source Git URL: " + link;
+      } catch (error) {
+        statusElement.textContent = "Copy failed. Source Git URL: " + link;
+      }
+    }
+
     function resetDocumentView() {
       activePath = "";
       currentDocPath = "";
       currentDocument = null;
+      sourceButton.disabled = true;
       document.title = documentPageTitle("");
       currentPages = [{ title: "Document", content: "" }];
       currentPageIndex = 0;
@@ -3301,6 +3377,7 @@ function renderHtml(appState, initialView = {}) {
       await search();
     });
 
+    sourceButton.addEventListener("click", copySourceUrl);
     shareButton.addEventListener("click", copyShareLink);
 
     docContent.addEventListener("click", async (event) => {
@@ -3512,6 +3589,7 @@ async function handleRequest(appState, req, res) {
             sendJson(res, 200, {
                 path: doc.path,
                 sourcePath: doc.sourcePath,
+                sourceUrl: sourceDocumentUrl(state.repo, doc.sourcePath),
                 title: doc.title,
                 layers: doc.layers,
                 tags: doc.tags,
@@ -3556,7 +3634,7 @@ async function handleRequest(appState, req, res) {
 
 async function startServer(instanceId, repoPath) {
     const repos = repoPath && !pathsEqual(repoPath, CONFIGURED_REPOS[0].path)
-        ? [{ ...CONFIGURED_REPOS[0], slug: "content", label: "content", path: repoPath, url: "", baseDir: "" }]
+        ? [{ ...CONFIGURED_REPOS[0], slug: "content", label: "content", path: repoPath, url: await getGitRemoteUrl(repoPath), baseDir: "" }]
         : CONFIGURED_REPOS;
     const state = createAppState(instanceId, repos);
     const server = createServer((req, res) => {

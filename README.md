@@ -24,6 +24,7 @@ This repository includes:
 - Multiple independent content repos addressed by URL prefix, for example `/kpe.content`.
 - Configurable per-repo base directory hiding, so `/data/Users/...` displays and shares as `Users/...`.
 - Direct document links with `repo/filename` page titles and a Share button that copies the current document URL.
+- A Source button that copies the current document's source Git URL.
 - On-demand refresh that runs `git pull --ff-only` and rebuilds the index.
 
 ## Build and theme updates
