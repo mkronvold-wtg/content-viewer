@@ -10,14 +10,18 @@
     "start": "node server.mjs",
     "theme:update": "node scripts/update-theme.mjs",
     "build": "npm run check",
-    "check": "node --check server.mjs && node --check extension.mjs",
-    "test": "npm run test:contracts && npm run test:security-exceptions",
+    "check": "node --check server.mjs && node --check extension.mjs && node --check scripts/base-digest-remediation.mjs",
+    "test": "npm run test:contracts && npm run test:security-exceptions && npm run test:base-digest-remediation",
     "test:contracts": "node --test test/git-boundary-contracts.test.mjs",
     "test:container": "node scripts/smoke-final-image.mjs",
     "security:exceptions": "node scripts/validate-security-exceptions.mjs",
-    "test:security-exceptions": "node --test test/security-exceptions.test.mjs"
+    "test:security-exceptions": "node --test test/security-exceptions.test.mjs",
+    "test:base-digest-remediation": "node --test test/base-digest-remediation.test.mjs"
   },
   "dependencies": {
     "mermaid": "^11.12.1"
+  },
+  "devDependencies": {
+    "yaml": "^2.9.0"
   }
 }

@@ -153,4 +153,52 @@ fork-supplied configuration.
 GitHub administrators must require the three named checks documented in the
 README before treating them as a merge gate. This repository has not inspected
 or configured branch protection, Xray, Artifactory, registry publishing,
-automatic remediation, auto-merge, or deployment behavior.
+or deployment behavior.
+
+## Scheduled base-image digest remediation
+
+`Node base-image digest remediation` is a scheduled source-maintenance
+workflow, not a deployment workflow. It has no `workflow_dispatch` or other
+branch-selectable entry point: GitHub evaluates its Tuesday schedule from the
+trusted default branch, which is the only event allowed to reach its
+branch/PR-writing job. Its target platform is explicitly recorded as
+`linux/amd64`; it must not infer the platform from the hosted runner. It reads
+the actual pinned Node tag and digest from `Dockerfile`, obtains a public token
+over HTTPS, and resolves only the same tag through the allowlisted official
+Docker Hub repository `registry-1.docker.io/library/node`. The workflow
+verifies both the tag manifest index and its selected `linux/amd64` platform
+manifest before a candidate can proceed.
+
+Local contributors can verify the offline parser contract with:
+
+```sh
+node scripts/base-digest-remediation.mjs inspect --dockerfile Dockerfile --platform linux/amd64
+npm run test:base-digest-remediation
+```
+
+The scheduled lane serializes with open dependency, release-pin, and prior
+remediation work. It builds and Trivy scans both current and candidate final
+runtime images for the recorded platform, enforces the committed exception
+policy for each, and retains registry/scan evidence. A candidate must remove
+one or more accepted High/Critical findings, add no finding at any severity,
+keep the same Node tag and approved publisher, and produce an exact
+`Dockerfile`-only digest change. Otherwise no PR is created. A registry,
+manifest, build, Trivy, or policy failure is a failed workflow rather than a
+success-shaped no-op.
+
+Immediately after scanning, the write job re-fetches `origin/main` and the
+open-maintenance queue. It refuses PR creation if the scanned base SHA no
+longer matches current `main` or a dependency, release-pin, or digest
+maintenance PR is open. It creates a unique, non-reused branch from that exact
+SHA, verifies the local one-file semantic digest substitution before pushing,
+then verifies the remote PR's exact one-file list, base SHA, and base/head
+Dockerfile bytes. Qualifying PRs are labelled `base-digest-remediation` and
+retain old/new digest, platform-manifest, and scan-delta evidence.
+
+The repository currently reports `allow_auto_merge: false`; therefore this
+workflow has no auto-merge job and never asks GitHub to merge a PR. A future
+trusted auto-merge design requires repository support and enabled auto-merge,
+plus administrator-enforced required checks/rulesets (and a merge queue if
+used). Those external controls are absent from this repository today. This
+phase never changes Compose, deployment, runtime Git policy, registry
+credentials, Artifactory, or a production container.
