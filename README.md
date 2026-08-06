@@ -54,7 +54,7 @@ npm ci
 npm run build
 npm test
 docker build --tag content-viewer:ci .
-CONTENT_VIEWER_TEST_IMAGE=content-viewer:ci npm run test:container
+npm run test:container
 ```
 
 The final-image smoke test requires a reachable Docker daemon. It runs the
