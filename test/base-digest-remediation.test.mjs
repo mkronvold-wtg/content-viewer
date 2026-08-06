@@ -139,9 +139,26 @@ function yamlDirectKeys(block) {
   assert.ok(firstEntry, 'Expected YAML mapping entries');
   const indentation = firstEntry.match(/^(\s*)/)[1].length;
   return lines.flatMap((line) => {
-    const match = line.match(new RegExp(`^\\s{${indentation}}([^:#\\s]+)\\s*:`));
-    return match ? [match[1]] : [];
+    const match = line.match(new RegExp(
+      `^\\s{${indentation}}(?:"((?:\\\\.|[^"])*)"|'((?:''|[^'])*)'|([^:#\\s][^:]*?))\\s*:`,
+    ));
+    if (!match) return [];
+    const [, doubleQuotedKey, singleQuotedKey, unquotedKey] = match;
+    if (doubleQuotedKey !== undefined) return [doubleQuotedKey];
+    if (singleQuotedKey !== undefined) return [singleQuotedKey.replace(/''/g, "'")];
+    return [unquotedKey.trim()];
   });
+}
+
+function assertScanHasNoPermissionsOverride(workflow) {
+  const jobs = yamlMappingBlock(workflow, /^jobs\s*:\s*(?:#.*)?$/m);
+  const scan = yamlMappingBlock(jobs, /^\s+scan\s*:\s*(?:#.*)?$/m);
+  assert.equal(
+    yamlDirectKeys(scan).includes('permissions'),
+    false,
+    'The scan job must not declare a permissions override',
+  );
+  return scan;
 }
 
 test('parses the actual pinned runtime tag and changes only its digest', () => {
@@ -339,9 +356,7 @@ test('remediation workflow accepts only scheduled trusted execution and never en
     contents: 'read',
     'pull-requests': 'read',
   });
-  const jobs = yamlMappingBlock(workflow, /^jobs\s*:\s*(?:#.*)?$/m);
-  const scan = yamlMappingBlock(jobs, /^\s+scan\s*:\s*(?:#.*)?$/m);
-  assert.equal(yamlDirectKeys(scan).includes('permissions'), false);
+  const scan = assertScanHasNoPermissionsOverride(workflow);
   assert.match(
     scan,
     /Check out current main with read-only fetch credentials[\s\S]*?persist-credentials:\s*true[\s\S]*?git fetch --no-tags origin main/,
@@ -353,4 +368,23 @@ test('remediation workflow accepts only scheduled trusted execution and never en
   const actions = [...workflow.matchAll(/^\s*uses:\s*[^@\s]+@([a-f0-9]{40})(?:\s+#.*)?$/gm)];
   assert.ok(actions.length > 0);
   assert.equal(actions.every(([, pin]) => /^[a-f0-9]{40}$/.test(pin)), true);
+});
+
+test('rejects quoted scan permissions overrides without confusing quoted values', () => {
+  for (const quotedKey of ['"permissions"', "'permissions'"]) {
+    const workflow = [
+      'jobs:',
+      '  scan:',
+      '    name: "Scan candidate: read-only"',
+      `    ${quotedKey}:`,
+      '      contents: write',
+      '  create-pull-request:',
+      '    permissions:',
+      '      contents: write',
+    ].join('\n');
+    assert.throws(
+      () => assertScanHasNoPermissionsOverride(workflow),
+      /must not declare a permissions override/,
+    );
+  }
 });
