@@ -20,5 +20,8 @@
   },
   "dependencies": {
     "mermaid": "^11.12.1"
+  },
+  "devDependencies": {
+    "yaml": "^2.9.0"
   }
 }

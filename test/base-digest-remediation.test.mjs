@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { parseDocument } from 'yaml';
 import {
   checkMaintenanceQueue,
   evaluateCandidateScanDelta,
@@ -105,56 +106,24 @@ function finding(id, severity, installedVersion = '1.0.0') {
   };
 }
 
-function yamlMappingBlock(source, declaration) {
-  const lines = source.split(/\r?\n/);
-  const start = lines.findIndex((line) => declaration.test(line));
-  assert.notEqual(start, -1, `Missing YAML declaration matching ${declaration}`);
-  const indentation = lines[start].match(/^(\s*)/)[1].length;
-  let end = lines.length;
-  for (let index = start + 1; index < lines.length; index += 1) {
-    if (/^\s*(?:#.*)?$/.test(lines[index])) continue;
-    if (lines[index].match(/^(\s*)/)[1].length <= indentation) {
-      end = index;
-      break;
-    }
-  }
-  return lines.slice(start + 1, end).join('\n');
-}
-
-function yamlDirectMapping(block) {
-  const lines = block.split('\n');
-  const firstEntry = lines.find((line) => /^\s*[^#\s][^:]*:\s*/.test(line));
-  assert.ok(firstEntry, 'Expected YAML mapping entries');
-  const indentation = firstEntry.match(/^(\s*)/)[1].length;
-  return Object.fromEntries(lines.flatMap((line) => {
-    const match = line.match(new RegExp(`^\\s{${indentation}}([^:#\\s]+)\\s*:\\s*([^#\\s]+)`));
-    if (!match) return [];
-    return [[match[1], match[2].replace(/^['"]|['"]$/g, '')]];
-  }));
-}
-
-function yamlDirectKeys(block) {
-  const lines = block.split('\n');
-  const firstEntry = lines.find((line) => /^\s*[^#\s][^:]*:/.test(line));
-  assert.ok(firstEntry, 'Expected YAML mapping entries');
-  const indentation = firstEntry.match(/^(\s*)/)[1].length;
-  return lines.flatMap((line) => {
-    const match = line.match(new RegExp(
-      `^\\s{${indentation}}(?:"((?:\\\\.|[^"])*)"|'((?:''|[^'])*)'|([^:#\\s][^:]*?))\\s*:`,
-    ));
-    if (!match) return [];
-    const [, doubleQuotedKey, singleQuotedKey, unquotedKey] = match;
-    if (doubleQuotedKey !== undefined) return [doubleQuotedKey];
-    if (singleQuotedKey !== undefined) return [singleQuotedKey.replace(/''/g, "'")];
-    return [unquotedKey.trim()];
-  });
+function parseWorkflow(workflow) {
+  const document = parseDocument(workflow);
+  assert.equal(
+    document.errors.length,
+    0,
+    `Workflow YAML must parse: ${document.errors.map((error) => error.message).join('; ')}`,
+  );
+  const parsed = document.toJS();
+  assert.ok(parsed && typeof parsed === 'object' && !Array.isArray(parsed), 'Workflow must be a YAML mapping');
+  return parsed;
 }
 
 function assertScanHasNoPermissionsOverride(workflow) {
-  const jobs = yamlMappingBlock(workflow, /^jobs\s*:\s*(?:#.*)?$/m);
-  const scan = yamlMappingBlock(jobs, /^\s+scan\s*:\s*(?:#.*)?$/m);
+  assert.ok(workflow.jobs && typeof workflow.jobs === 'object', 'Workflow must define jobs');
+  const scan = workflow.jobs.scan;
+  assert.ok(scan && typeof scan === 'object', 'Workflow must define a scan job');
   assert.equal(
-    yamlDirectKeys(scan).includes('permissions'),
+    Object.hasOwn(scan, 'permissions'),
     false,
     'The scan job must not declare a permissions override',
   );
@@ -344,34 +313,35 @@ test('rejects a stale scanned base or newly occupied maintenance queue', () => {
 
 test('remediation workflow accepts only scheduled trusted execution and never enables auto-merge', async () => {
   const root = resolve(process.cwd());
-  const workflow = await readFile(resolve(root, '.github/workflows/base-digest-remediation.yml'), 'utf8');
-  assert.match(workflow, /^on:\r?\n  schedule:/m);
-  assert.doesNotMatch(workflow, /^\s*workflow_dispatch:/m);
-  assert.match(workflow, /create-pull-request:[\s\S]*?github\.event_name == 'schedule'/);
-  assert.doesNotMatch(workflow, /enable-auto-merge|gh pr merge|--auto/);
-  const globalPermissions = yamlDirectMapping(
-    yamlMappingBlock(workflow, /^permissions\s*:\s*(?:#.*)?$/m),
+  const source = await readFile(resolve(root, '.github/workflows/base-digest-remediation.yml'), 'utf8');
+  const workflow = parseWorkflow(source);
+  assert.ok(Array.isArray(workflow.on?.schedule), 'Workflow must be scheduled');
+  assert.equal(Object.hasOwn(workflow.on, 'workflow_dispatch'), false);
+  assert.match(workflow.jobs['create-pull-request'].if, /github\.event_name == 'schedule'/);
+  const jobSteps = Object.values(workflow.jobs).flatMap((job) => job.steps ?? []);
+  assert.doesNotMatch(
+    jobSteps.map((step) => `${step.if ?? ''}\n${step.run ?? ''}`).join('\n'),
+    /enable-auto-merge|gh pr merge|--auto/,
   );
-  assert.deepEqual(globalPermissions, {
+  assert.deepEqual(workflow.permissions, {
     contents: 'read',
     'pull-requests': 'read',
   });
   const scan = assertScanHasNoPermissionsOverride(workflow);
+  const checkout = scan.steps.find((step) => step.name === 'Check out current main with read-only fetch credentials');
+  assert.equal(checkout.with?.['persist-credentials'], true);
+  assert.equal(Object.hasOwn(checkout.with, 'token'), false);
   assert.match(
-    scan,
-    /Check out current main with read-only fetch credentials[\s\S]*?persist-credentials:\s*true[\s\S]*?git fetch --no-tags origin main/,
+    scan.steps.find((step) => step.name === 'Record the scanned trusted main base').run,
+    /git fetch --no-tags origin main/,
   );
-  assert.doesNotMatch(
-    scan,
-    /(?:token\s*:\s*\$\{\{[^}]+\}\}|https:\/\/[^@\s]+@github\.com)/,
-  );
-  const actions = [...workflow.matchAll(/^\s*uses:\s*[^@\s]+@([a-f0-9]{40})(?:\s+#.*)?$/gm)];
+  const actions = jobSteps.filter((step) => step.uses);
   assert.ok(actions.length > 0);
-  assert.equal(actions.every(([, pin]) => /^[a-f0-9]{40}$/.test(pin)), true);
+  assert.equal(actions.every((step) => /^[^@\s]+@[a-f0-9]{40}$/.test(step.uses)), true);
 });
 
-test('rejects quoted scan permissions overrides without confusing quoted values', () => {
-  for (const quotedKey of ['"permissions"', "'permissions'"]) {
+test('rejects quoted and escaped scan permissions overrides without confusing quoted values', () => {
+  for (const quotedKey of ['"permissions"', "'permissions'", '"permiss\\u0069ons"']) {
     const workflow = [
       'jobs:',
       '  scan:',
@@ -383,8 +353,15 @@ test('rejects quoted scan permissions overrides without confusing quoted values'
       '      contents: write',
     ].join('\n');
     assert.throws(
-      () => assertScanHasNoPermissionsOverride(workflow),
+      () => assertScanHasNoPermissionsOverride(parseWorkflow(workflow)),
       /must not declare a permissions override/,
     );
   }
+});
+
+test('rejects malformed workflow YAML instead of treating it as a valid policy document', () => {
+  assert.throws(
+    () => parseWorkflow('jobs:\n  scan:\n    permissions: [contents: read'),
+    /Workflow YAML must parse/,
+  );
 });
