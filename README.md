@@ -96,8 +96,66 @@ currently approved.
 Repository administrators must require **Validate**, **Security scan / Trivy
 source and final-image policy**, and **Dependency review / Review changed
 dependencies** for `main`. This repository does not configure branch
-protection, automatic remediation, auto-merge, registry publishing, Artifactory,
-or Xray.
+protection, registry publishing, Artifactory, or Xray.
+
+## Node base-image digest remediation
+
+`Node base-image digest remediation` runs every Tuesday and can be started from
+the Actions UI. Its deployment platform is explicitly fixed to
+`linux/amd64`; it is neither inferred from a GitHub runner nor intended to
+describe every developer machine. The workflow parses the pinned `node:26...`
+reference actually present in `Dockerfile`, then contacts only Docker Hub's
+official `registry-1.docker.io/library/node` endpoint for that **same tag**.
+It verifies the tag's manifest index and the selected `linux/amd64` child
+manifest before considering a new digest.
+
+For an offline, no-network parsing dry run:
+
+```sh
+node scripts/base-digest-remediation.mjs inspect --dockerfile Dockerfile --platform linux/amd64
+npm run test:base-digest-remediation
+```
+
+For a GitHub Actions dry run, select **Run workflow** and leave `dry_run` set
+to `true`. It performs the official-registry and open-maintenance-PR checks,
+but does not build, scan, create a branch, or create a PR. A deliberately
+authorized manual run with `dry_run=false` uses the same full lane as the
+schedule; it never publishes an image or deploys production.
+
+A scheduled run creates no PR unless all of the following are true:
+
+1. The official same-tag manifest digest differs from the pinned digest and
+   contains exactly one verified `linux/amd64` manifest.
+2. No open dependency, release-pin, or prior base-digest remediation PR is
+   being serialized ahead of it.
+3. Both current and candidate **final runtime** images build for the recorded
+   platform, scan successfully with the committed Trivy exception policy, and
+   pass all helper tests and policy checks.
+4. The candidate removes at least one currently accepted High/Critical
+   finding and introduces no finding at any severity.
+5. The candidate reconstructs as an exact `Dockerfile` digest-only change;
+   the remote PR file list is also exactly `Dockerfile`.
+
+The PR carries the `base-digest-remediation` label and records old/new tag and
+platform-manifest digests, the official manifest endpoint, target platform,
+and scan delta. Registry, manifest, build, scanner, or policy failures fail
+the workflow and retain evidence where available; a correctly completed
+no-candidate or non-qualifying scan simply creates no PR.
+
+The workflow can only run its write and auto-merge jobs for the canonical
+same-repository workflow, uses a unique action-owned branch, refuses forks,
+and never force-pushes or overwrites a branch. Its final job only calls GitHub
+**auto-merge** after independently rechecking the generated evidence, label,
+same-repository branch, and exact file list. It does not use an administrator
+bypass, so required CI/security checks and a configured merge queue continue
+to govern the merge.
+
+**Administrator action still required:** enable repository auto-merge and
+require the checks listed above (and configure merge queue if it is used).
+This repository cannot enable those GitHub settings and does not claim that
+they are enabled. The automatic lane is strictly a source-maintenance lane:
+it performs no production deployment, Compose change, registry publication,
+or Artifactory operation.
 
 ## Current deployment
 

@@ -153,4 +153,48 @@ fork-supplied configuration.
 GitHub administrators must require the three named checks documented in the
 README before treating them as a merge gate. This repository has not inspected
 or configured branch protection, Xray, Artifactory, registry publishing,
-automatic remediation, auto-merge, or deployment behavior.
+or deployment behavior.
+
+## Scheduled base-image digest remediation
+
+`Node base-image digest remediation` is a source-maintenance workflow, not a
+deployment workflow. Its target platform is explicitly recorded as
+`linux/amd64`; it must not infer the platform from the hosted runner. It reads
+the actual pinned Node tag and digest from `Dockerfile`, obtains a public token
+over HTTPS, and resolves only the same tag through the allowlisted official
+Docker Hub repository `registry-1.docker.io/library/node`. The workflow
+verifies both the tag manifest index and its selected `linux/amd64` platform
+manifest before a candidate can proceed.
+
+Operators can use the Actions UI with `dry_run=true` (the default) to exercise
+the official-manifest and maintenance-queue decision without a build, scan,
+branch, PR, registry publication, or production action. Local contributors
+can verify the same offline parser contract with:
+
+```sh
+node scripts/base-digest-remediation.mjs inspect --dockerfile Dockerfile --platform linux/amd64
+npm run test:base-digest-remediation
+```
+
+The scheduled or explicitly authorized non-dry run serializes with open
+dependency, release-pin, and prior remediation work. It builds and Trivy scans
+both current and candidate final runtime images for the recorded platform,
+enforces the committed exception policy for each, and retains registry/scan
+evidence. A candidate must remove one or more accepted High/Critical findings,
+add no finding at any severity, keep the same Node tag and approved publisher,
+and produce an exact `Dockerfile`-only digest change. Otherwise no PR is
+created. A registry, manifest, build, Trivy, or policy failure is a failed
+workflow rather than a success-shaped no-op.
+
+When eligible, the action uses a unique branch, verifies the remote PR's exact
+single-file diff before marking it eligible, and labels it
+`base-digest-remediation`. The body records old/new digest and selected
+platform-manifest evidence plus the scan delta. It then requests GitHub
+auto-merge without an administrator bypass, so required checks and merge queue
+rules remain authoritative.
+
+GitHub administrators must still enable repository auto-merge and configure
+the required checks/merge queue outside this repository. That setting has not
+been inspected or enabled here. This phase never changes Compose, deployment,
+runtime Git policy, registry credentials, Artifactory, or a production
+container.

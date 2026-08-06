@@ -1,0 +1,377 @@
+name: Node base-image digest remediation
+
+on:
+  schedule:
+    - cron: '43 4 * * 2'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Resolve and validate the official manifest only; do not build, scan, branch, or create a pull request.
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: dependency-and-release-pin-maintenance-${{ github.repository }}
+  cancel-in-progress: false
+
+env:
+  DEPLOYMENT_PLATFORM: linux/amd64
+  REMEDIATION_IMAGE: content-viewer:base-digest-remediation
+
+jobs:
+  discover:
+    name: Resolve official Node manifest
+    if: >-
+      github.repository == 'mkronvold-wtg/content-viewer' &&
+      github.event.repository.fork == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      resolution: ${{ steps.decision.outputs.resolution }}
+      candidate_available: ${{ steps.decision.outputs.candidate_available }}
+      candidate_digest: ${{ steps.decision.outputs.candidate_digest }}
+      queue_clear: ${{ steps.decision.outputs.queue_clear }}
+    steps:
+      - name: Check out current main
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Resolve the allowlisted same-tag manifest
+        id: decision
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/base-digest-remediation.mjs resolve \
+            --dockerfile Dockerfile \
+            --platform "$DEPLOYMENT_PLATFORM" \
+            --output resolution.json
+          gh api --paginate --slurp \
+            "/repos/$GITHUB_REPOSITORY/pulls?state=open&base=main&per_page=100" \
+            > open-pull-requests.json
+          node scripts/base-digest-remediation.mjs queue-status \
+            --input open-pull-requests.json \
+            --output maintenance-queue.json
+          node scripts/base-digest-remediation.mjs workflow-outputs \
+            --resolution resolution.json \
+            --queue maintenance-queue.json \
+            >> "$GITHUB_OUTPUT"
+
+  scan:
+    name: Build and scan qualifying candidate
+    needs: discover
+    if: >-
+      needs.discover.outputs.candidate_available == 'true' &&
+      needs.discover.outputs.queue_clear == 'true' &&
+      (github.event_name == 'schedule' || inputs.dry_run == false)
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    outputs:
+      scan_delta: ${{ steps.scan-result.outputs.scan_delta }}
+      scan_qualifies: ${{ steps.scan-result.outputs.scan_qualifies }}
+    steps:
+      - name: Check out current main
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Install and verify helper policy
+        run: |
+          npm ci
+          npm test
+          npm run security:exceptions
+      - name: Re-resolve the exact candidate
+        env:
+          EXPECTED_CANDIDATE_DIGEST: ${{ needs.discover.outputs.candidate_digest }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/base-digest-remediation.mjs resolve \
+            --dockerfile Dockerfile \
+            --platform "$DEPLOYMENT_PLATFORM" \
+            --expect-candidate-digest "$EXPECTED_CANDIDATE_DIGEST" \
+            --output resolution.json
+      - name: Build current final runtime image
+        shell: bash
+        run: docker build --platform "$DEPLOYMENT_PLATFORM" --tag "$REMEDIATION_IMAGE" .
+      - name: Record current final-image digest
+        id: current-image
+        shell: bash
+        run: |
+          set -euo pipefail
+          digest="$(docker image inspect --format='{{.Id}}' "$REMEDIATION_IMAGE")"
+          [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]] || { echo "Invalid current image digest" >&2; exit 1; }
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - name: Scan current final runtime image
+        uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # v0.33.1
+        with:
+          scan-type: image
+          image-ref: content-viewer:base-digest-remediation
+          scanners: vuln
+          format: json
+          output: trivy-current.json
+          exit-code: '0'
+          ignore-unfixed: 'false'
+          version: v0.65.0
+      - name: Enforce current final-image exception policy
+        run: >-
+          node scripts/enforce-trivy-policy.mjs --scan image --input trivy-current.json
+          --exceptions security/trivy-exceptions.json --image-digest "${{ steps.current-image.outputs.digest }}"
+      - name: Create and verify digest-only candidate Dockerfile
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp Dockerfile "$RUNNER_TEMP/Dockerfile.current"
+          node scripts/base-digest-remediation.mjs create-candidate \
+            --dockerfile Dockerfile \
+            --resolution resolution.json \
+            --output "$RUNNER_TEMP/Dockerfile.candidate"
+          node scripts/base-digest-remediation.mjs verify-candidate \
+            --baseline "$RUNNER_TEMP/Dockerfile.current" \
+            --candidate "$RUNNER_TEMP/Dockerfile.candidate" \
+            --resolution resolution.json
+      - name: Build candidate final runtime image
+        shell: bash
+        run: docker build --platform "$DEPLOYMENT_PLATFORM" --file "$RUNNER_TEMP/Dockerfile.candidate" --tag "$REMEDIATION_IMAGE" .
+      - name: Record candidate final-image digest
+        id: candidate-image
+        shell: bash
+        run: |
+          set -euo pipefail
+          digest="$(docker image inspect --format='{{.Id}}' "$REMEDIATION_IMAGE")"
+          [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]] || { echo "Invalid candidate image digest" >&2; exit 1; }
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - name: Scan candidate final runtime image
+        uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # v0.33.1
+        with:
+          scan-type: image
+          image-ref: content-viewer:base-digest-remediation
+          scanners: vuln
+          format: json
+          output: trivy-candidate.json
+          exit-code: '0'
+          ignore-unfixed: 'false'
+          version: v0.65.0
+      - name: Enforce candidate final-image exception policy
+        run: >-
+          node scripts/enforce-trivy-policy.mjs --scan image --input trivy-candidate.json
+          --exceptions security/trivy-exceptions.json --image-digest "${{ steps.candidate-image.outputs.digest }}"
+      - name: Evaluate complete scan delta
+        id: scan-result
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/base-digest-remediation.mjs scan-delta \
+            --current trivy-current.json \
+            --candidate trivy-candidate.json \
+            --output scan-delta.json
+          node scripts/base-digest-remediation.mjs workflow-outputs \
+            --resolution resolution.json \
+            --scan-delta scan-delta.json \
+            >> "$GITHUB_OUTPUT"
+      - name: Upload registry and scan evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: base-digest-remediation-evidence-${{ github.run_id }}
+          path: |
+            resolution.json
+            trivy-current.json
+            trivy-candidate.json
+            scan-delta.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  create-pull-request:
+    name: Create verified digest-only pull request
+    needs: [discover, scan]
+    if: needs.scan.outputs.scan_qualifies == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    outputs:
+      pull_number: ${{ steps.eligible.outputs.pull_number }}
+      branch: ${{ steps.branch.outputs.branch }}
+      eligible: ${{ steps.eligible.outputs.eligible }}
+    steps:
+      - name: Check out current main with write credentials
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          ref: main
+          persist-credentials: true
+      - name: Set up Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Reserve a unique remediation branch
+        id: branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          branch="base-digest-remediation/${GITHUB_RUN_ID}"
+          [[ "$branch" =~ ^base-digest-remediation/[1-9][0-9]*$ ]] || { echo "Invalid generated branch" >&2; exit 1; }
+          if git ls-remote --exit-code --heads origin "refs/heads/$branch" >/dev/null; then
+            echo "Refusing to overwrite existing branch $branch" >&2
+            exit 1
+          fi
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+      - name: Generate and verify the digest-only change
+        env:
+          RESOLUTION_JSON: ${{ needs.discover.outputs.resolution }}
+          SCAN_DELTA_JSON: ${{ needs.scan.outputs.scan_delta }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' "$RESOLUTION_JSON" > "$RUNNER_TEMP/resolution.json"
+          cp Dockerfile "$RUNNER_TEMP/Dockerfile.current"
+          node scripts/base-digest-remediation.mjs create-candidate \
+            --dockerfile Dockerfile \
+            --resolution "$RUNNER_TEMP/resolution.json" \
+            --output Dockerfile
+          node scripts/base-digest-remediation.mjs verify-candidate \
+            --baseline "$RUNNER_TEMP/Dockerfile.current" \
+            --candidate Dockerfile \
+            --resolution "$RUNNER_TEMP/resolution.json"
+          [[ "$(git diff --name-only)" == 'Dockerfile' ]] || { echo "Candidate changed files other than Dockerfile" >&2; exit 1; }
+          git diff --check
+          node scripts/base-digest-remediation.mjs write-pr-metadata \
+            --resolution-json "$RESOLUTION_JSON" \
+            --scan-delta-json "$SCAN_DELTA_JSON" \
+            --body-output "$RUNNER_TEMP/pull-request-body.md" \
+            --title-output "$RUNNER_TEMP/pull-request-title.txt"
+      - name: Commit and push the verified candidate
+        env:
+          BRANCH: ${{ steps.branch.outputs.branch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git switch --create "$BRANCH"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- Dockerfile
+          [[ "$(git diff --cached --name-only)" == 'Dockerfile' ]] || { echo "Staged files are not Dockerfile-only" >&2; exit 1; }
+          git diff --cached --check
+          git diff --cached --quiet && { echo "No candidate change to commit" >&2; exit 1; }
+          git commit -m 'chore: remediate Node base-image digest'
+          git push origin "HEAD:refs/heads/$BRANCH"
+      - name: Ensure the reserved remediation label exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! gh api "/repos/$GITHUB_REPOSITORY/labels/base-digest-remediation" >/dev/null 2>&1; then
+            gh label create base-digest-remediation \
+              --repo "$GITHUB_REPOSITORY" \
+              --color B60205 \
+              --description 'Verified scheduled Node base-image digest remediation.'
+          fi
+      - name: Open remediation pull request
+        id: pull-request
+        env:
+          BRANCH: ${{ steps.branch.outputs.branch }}
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          pull_url="$(gh pr create \
+            --repo "$GITHUB_REPOSITORY" \
+            --base main \
+            --head "$BRANCH" \
+            --title "$(cat "$RUNNER_TEMP/pull-request-title.txt")" \
+            --body-file "$RUNNER_TEMP/pull-request-body.md" \
+            --label base-digest-remediation)"
+          pull_number="$(gh pr view "$pull_url" --repo "$GITHUB_REPOSITORY" --json number --jq .number)"
+          [[ "$pull_number" =~ ^[1-9][0-9]*$ ]] || { echo "Invalid pull request number" >&2; exit 1; }
+          echo "number=$pull_number" >> "$GITHUB_OUTPUT"
+      - name: Verify remote pull request eligibility exactly
+        id: eligible
+        env:
+          BRANCH: ${{ steps.branch.outputs.branch }}
+          GH_TOKEN: ${{ github.token }}
+          RESOLUTION_JSON: ${{ needs.discover.outputs.resolution }}
+          SCAN_DELTA_JSON: ${{ needs.scan.outputs.scan_delta }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          pull_number="${{ steps.pull-request.outputs.number }}"
+          gh pr view "$pull_number" --repo "$GITHUB_REPOSITORY" \
+            --json headRepository,headRefName,baseRefName,labels,body,title \
+            > "$RUNNER_TEMP/pull-request.json"
+          gh api "/repos/$GITHUB_REPOSITORY/pulls/$pull_number/files?per_page=100" \
+            > "$RUNNER_TEMP/pull-request-files.json"
+          node scripts/base-digest-remediation.mjs verify-pr \
+            --pull-request "$RUNNER_TEMP/pull-request.json" \
+            --files "$RUNNER_TEMP/pull-request-files.json" \
+            --repository "$GITHUB_REPOSITORY" \
+            --branch "$BRANCH" \
+            --resolution-json "$RESOLUTION_JSON" \
+            --scan-delta-json "$SCAN_DELTA_JSON"
+          echo "pull_number=$pull_number" >> "$GITHUB_OUTPUT"
+          echo 'eligible=true' >> "$GITHUB_OUTPUT"
+
+  enable-auto-merge:
+    name: Enable verified GitHub auto-merge
+    needs: [discover, scan, create-pull-request]
+    if: needs.create-pull-request.outputs.eligible == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Check out verification helper
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - name: Re-verify and enable auto-merge without bypassing checks
+        env:
+          BRANCH: ${{ needs.create-pull-request.outputs.branch }}
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ needs.create-pull-request.outputs.pull_number }}
+          RESOLUTION_JSON: ${{ needs.discover.outputs.resolution }}
+          SCAN_DELTA_JSON: ${{ needs.scan.outputs.scan_delta }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]] || { echo "Invalid pull request number" >&2; exit 1; }
+          gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" \
+            --json headRepository,headRefName,baseRefName,labels,body,title \
+            > "$RUNNER_TEMP/pull-request.json"
+          gh api "/repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files?per_page=100" \
+            > "$RUNNER_TEMP/pull-request-files.json"
+          node scripts/base-digest-remediation.mjs verify-pr \
+            --pull-request "$RUNNER_TEMP/pull-request.json" \
+            --files "$RUNNER_TEMP/pull-request-files.json" \
+            --repository "$GITHUB_REPOSITORY" \
+            --branch "$BRANCH" \
+            --resolution-json "$RESOLUTION_JSON" \
+            --scan-delta-json "$SCAN_DELTA_JSON"
+          gh pr merge "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --auto --merge
