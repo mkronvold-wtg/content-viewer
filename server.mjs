@@ -40,6 +40,42 @@ const SKIPPED_DIRECTORIES = new Set([
 ]);
 const RESERVED_REPO_SLUGS = new Set(["api", "asset", "vendor", "favicon.ico"]);
 
+const DEFAULT_ALLOWED_GIT_HOSTS = new Set(["github.com"]);
+const GIT_SAFETY_ARGS = [
+    "-c", "credential.helper=", "-c", "protocol.allow=never", "-c", "protocol.https.allow=always",
+    "-c", "protocol.file.allow=never", "-c", "protocol.git.allow=never", "-c", "protocol.ssh.allow=never",
+    "-c", "protocol.ext.allow=never", "-c", "submodule.recurse=false", "-c", "fetch.recurseSubmodules=false",
+];
+
+function allowedGitHosts() {
+    const configured = String(process.env.CONTENT_VIEWER_ALLOWED_GIT_HOSTS ?? "").split(",").map((host) => host.trim().toLowerCase()).filter(Boolean);
+    const hosts = configured.length ? configured : [...DEFAULT_ALLOWED_GIT_HOSTS];
+    if (hosts.some((host) => !/^[a-z0-9.-]+$/.test(host) || host.startsWith(".") || host.endsWith(".") || host.includes(".."))) {
+        throw new Error("CONTENT_VIEWER_ALLOWED_GIT_HOSTS contains an invalid hostname");
+    }
+    return new Set(hosts);
+}
+
+function testLocalGitAllowed() {
+    return process.env.NODE_ENV === "test" && process.env.CONTENT_VIEWER_TEST_ALLOW_LOCAL_GIT === "1";
+}
+
+function approvedRepositoryUrl(value) {
+    const source = String(value ?? "").trim();
+    if (!source) throw new Error("A repository URL is required");
+    let parsed;
+    try { parsed = new URL(source); } catch { throw new Error("Repository URL must be an approved HTTPS URL"); }
+    if (testLocalGitAllowed() && parsed.protocol === "file:" && !parsed.username && !parsed.password && !parsed.search && !parsed.hash) return parsed;
+    if (parsed.protocol !== "https:" || parsed.username || parsed.password || parsed.search || parsed.hash || parsed.port || !allowedGitHosts().has(parsed.hostname.toLowerCase())) {
+        throw new Error("Repository URL must use HTTPS on an allowed host without embedded credentials");
+    }
+    return parsed;
+}
+
+function sameRepositoryUrl(left, right) {
+    return approvedRepositoryUrl(left).href === approvedRepositoryUrl(right).href;
+}
+
 const servers = new Map();
 
 function loadThemeConfig() {
@@ -184,6 +220,9 @@ function parseRepoConfigs() {
     const repos = slugs.map((slug, index) => {
         const pathFromEnv = envForRepo(slug, "PATH") ?? (configuredSlugs.length ? undefined : process.env.CONTENT_VIEWER_REPO_PATH);
         const urlFromEnv = envForRepo(slug, "URL") ?? (configuredSlugs.length ? undefined : process.env.CONTENT_VIEWER_REPO_URL);
+        if (urlFromEnv) {
+            approvedRepositoryUrl(urlFromEnv);
+        }
         const branchFromEnv = envForRepo(slug, "BRANCH") ?? (configuredSlugs.length ? undefined : process.env.CONTENT_VIEWER_REPO_BRANCH);
         const baseDirFromEnv = envForRepo(slug, "BASE_DIR") ?? (configuredSlugs.length ? undefined : process.env.CONTENT_VIEWER_REPO_BASE_DIR);
         return {
@@ -240,37 +279,36 @@ function normalizeRepoPath(input) {
     return CONFIGURED_REPOS[0].path;
 }
 
-async function runGit(args) {
-    const token = process.env.CONTENT_VIEWER_GITHUB_TOKEN;
-    const authHeader = token
-        ? Buffer.from(`x-access-token:${token}`, "utf8").toString("base64")
-        : "";
-    const gitArgs = token ? ["-c", `http.https://github.com/.extraheader=AUTHORIZATION: basic ${authHeader}`, ...args] : args;
+async function runGit(operation, args, repositoryUrl = "") {
+    const remote = repositoryUrl ? approvedRepositoryUrl(repositoryUrl) : null;
+    const environment = { ...process.env };
+    for (const key of Object.keys(environment)) {
+        if (key.startsWith("GIT_")) delete environment[key];
+    }
+    delete environment.SSH_ASKPASS;
+    environment.GIT_CONFIG_NOSYSTEM = "1";
+    environment.GIT_CONFIG_GLOBAL = process.platform === "win32" ? "NUL" : "/dev/null";
+    environment.GIT_TERMINAL_PROMPT = "0";
+    environment.GCM_INTERACTIVE = "Never";
+    const token = remote?.protocol === "https:" && remote.hostname.toLowerCase() === "github.com" ? process.env.CONTENT_VIEWER_GITHUB_TOKEN : "";
+    if (token) {
+        environment.GIT_CONFIG_COUNT = "1";
+        environment.GIT_CONFIG_KEY_0 = "http.https://github.com/.extraheader";
+        environment.GIT_CONFIG_VALUE_0 = `AUTHORIZATION: basic ${Buffer.from(`x-access-token:${token}`, "utf8").toString("base64")}`;
+    }
+    const safetyArgs = testLocalGitAllowed() && remote?.protocol === "file:"
+        ? GIT_SAFETY_ARGS.map((value) => value === "protocol.file.allow=never" ? "protocol.file.allow=always" : value)
+        : GIT_SAFETY_ARGS;
     try {
-        const { stdout, stderr } = await execFileAsync("git", gitArgs, {
-            windowsHide: true,
-            timeout: 120000,
-            maxBuffer: 2 * 1024 * 1024,
-            env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
-        });
+        const { stdout, stderr } = await execFileAsync("git", [...safetyArgs, ...args], { windowsHide: true, timeout: 120000, maxBuffer: 2 * 1024 * 1024, env: environment });
         return `${stdout}${stderr}`.trim();
-    } catch (error) {
-        const output = `${error.stdout ?? ""}${error.stderr ?? ""}`.trim();
-        const command = ["git", ...args].join(" ");
-        throw new Error(output ? `${command} failed:\n${output}` : `${command} failed`);
+    } catch {
+        throw new Error(`Git ${operation} failed`);
     }
 }
 
 async function getGitRemoteUrl(repoPath) {
-    try {
-        return await runGit(["-C", repoPath, "remote", "get-url", "origin"]);
-    } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        if (message.includes("No such remote 'origin'") || message.includes("not a git repository")) {
-            return "";
-        }
-        throw error;
-    }
+    try { return await runGit("inspect remote", ["-C", repoPath, "remote", "get-url", "origin"]); } catch { return ""; }
 }
 
 async function ensureDisposableClone(repoState) {
@@ -278,26 +316,35 @@ async function ensureDisposableClone(repoState) {
     const repoPath = repo.path;
     try {
         const stat = await fs.stat(path.join(repoPath, ".git"));
-        if (stat.isDirectory()) {
-            return { skipped: false, output: `${repo.slug} clone already exists.` };
-        }
-    } catch {
-        if (!repo.url) {
-            throw new Error(`Set a repository URL before cloning ${repo.slug}`);
-        }
+        if (stat.isDirectory()) return { skipped: false, output: `${repo.slug} clone already exists.` };
+    } catch (error) {
+        if (error?.code !== "ENOENT") throw new Error(`Unable to inspect content repository ${repo.slug}`);
+        if (!repo.url) throw new Error(`Set a repository URL before cloning ${repo.slug}`);
+        approvedRepositoryUrl(repo.url);
         await fs.mkdir(path.dirname(repoPath), { recursive: true });
-        const output = await runGit(["clone", "--depth", "1", "--branch", repo.branch, repo.url, repoPath]);
-        return { skipped: false, output };
+        const stagingPath = `${repoPath}.clone-${process.pid}-${Date.now()}`;
+        try {
+            const output = await runGit("clone", ["clone", "--no-recurse-submodules", "--depth", "1", "--branch", repo.branch, repo.url, stagingPath], repo.url);
+            await fs.rename(stagingPath, repoPath);
+            return { skipped: false, output };
+        } catch (error) {
+            await fs.rm(stagingPath, { recursive: true, force: true });
+            throw error;
+        }
     }
-
     throw new Error(`${repoPath} exists but is not a Git clone`);
 }
 
 async function updateDisposableClone(repoState) {
     await ensureDisposableClone(repoState);
-    const output = await runGit(["-C", repoState.repo.path, "pull", "--ff-only"]);
+    const remoteUrl = await getGitRemoteUrl(repoState.repo.path);
+    if (!remoteUrl) throw new Error("Content repository has no origin remote");
+    approvedRepositoryUrl(remoteUrl);
+    if (repoState.repo.url && !sameRepositoryUrl(remoteUrl, repoState.repo.url)) throw new Error("Content repository origin does not match its configured URL");
+    const output = await runGit("pull", ["-C", repoState.repo.path, "pull", "--ff-only", "--no-recurse-submodules", "origin", repoState.repo.branch], remoteUrl);
     return { skipped: false, output };
 }
+
 
 function extractFrontmatter(content) {
     if (!content.startsWith("---\n") && !content.startsWith("---\r\n")) {
@@ -3652,6 +3699,18 @@ async function startServer(instanceId, repoPath) {
         server,
         state,
         url: `http://127.0.0.1:${port}/`,
+    };
+}
+
+export async function startServerForTest(repos) {
+    const state = createAppState("test", repos);
+    const server = createServer((req, res) => { void handleRequest(state, req, res); });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    const port = typeof address === "object" && address ? address.port : 0;
+    return {
+        server, state, url: `http://127.0.0.1:${port}`,
+        close: () => new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve())),
     };
 }
 
