@@ -341,7 +341,7 @@ async function updateDisposableClone(repoState) {
     if (!remoteUrl) throw new Error("Content repository has no origin remote");
     approvedRepositoryUrl(remoteUrl);
     if (repoState.repo.url && !sameRepositoryUrl(remoteUrl, repoState.repo.url)) throw new Error("Content repository origin does not match its configured URL");
-    const output = await runGit("pull", ["-C", repoState.repo.path, "pull", "--ff-only", "--no-recurse-submodules"], remoteUrl);
+    const output = await runGit("pull", ["-C", repoState.repo.path, "pull", "--ff-only", "--no-recurse-submodules", "origin", repoState.repo.branch], remoteUrl);
     return { skipped: false, output };
 }
 

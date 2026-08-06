@@ -85,14 +85,25 @@ test("runtime Git and viewer service contracts", async () => {
         const updatedSearch = await api(first, "/api/search?q=bravo");
         assert.equal(updatedSearch.body.results[0].title, "Updated guide");
 
+        const unvalidatedRemoteUrl = pathToFileURL(path.join(testRoot, "unvalidated.git")).href;
+        await git(["remote", "add", "unvalidated", unvalidatedRemoteUrl], activePath);
+        await git(["config", "branch.main.remote", "unvalidated"], activePath);
+        await git(["config", "branch.main.merge", "refs/heads/main"], activePath);
+        await writeGuide("# Validated origin guide\n\nCharlie content\n");
+        const originRefresh = await api(first, "/api/refresh", { method: "POST" });
+        assert.equal(originRefresh.response.status, 200, JSON.stringify(originRefresh.body));
+        const originSearch = await api(first, "/api/search?q=charlie");
+        assert.equal(originSearch.response.status, 200);
+        assert.equal(originSearch.body.results[0].title, "Validated origin guide");
+
         await fs.rename(remotePath, `${remotePath}.offline`);
         try {
             const failedRefresh = await api(first, "/api/refresh", { method: "POST" });
             assert.equal(failedRefresh.response.status, 500);
             assert.match(failedRefresh.body.error, /^Git pull failed$/);
-            const preservedSearch = await api(first, "/api/search?q=bravo");
+            const preservedSearch = await api(first, "/api/search?q=charlie");
             assert.equal(preservedSearch.response.status, 200);
-            assert.equal(preservedSearch.body.results[0].title, "Updated guide");
+            assert.equal(preservedSearch.body.results[0].title, "Validated origin guide");
         } finally {
             await fs.rename(`${remotePath}.offline`, remotePath);
         }
@@ -102,9 +113,9 @@ test("runtime Git and viewer service contracts", async () => {
 
     const restarted = await startServerForTest([repository]);
     try {
-        const existingClone = await api(restarted, "/api/search?q=bravo");
+        const existingClone = await api(restarted, "/api/search?q=charlie");
         assert.equal(existingClone.response.status, 200);
-        assert.equal(existingClone.body.results[0].title, "Updated guide");
+        assert.equal(existingClone.body.results[0].title, "Validated origin guide");
     } finally {
         await restarted.close();
     }
