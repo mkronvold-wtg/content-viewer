@@ -3,13 +3,6 @@ name: Node base-image digest remediation
 on:
   schedule:
     - cron: '43 4 * * 2'
-  workflow_dispatch:
-    inputs:
-      dry_run:
-        description: Resolve and validate the official manifest only; do not build, scan, branch, or create a pull request.
-        required: false
-        default: true
-        type: boolean
 
 permissions:
   contents: read
@@ -75,18 +68,31 @@ jobs:
     if: >-
       needs.discover.outputs.candidate_available == 'true' &&
       needs.discover.outputs.queue_clear == 'true' &&
-      (github.event_name == 'schedule' || inputs.dry_run == false)
+      github.event_name == 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 35
     outputs:
       scan_delta: ${{ steps.scan-result.outputs.scan_delta }}
       scan_qualifies: ${{ steps.scan-result.outputs.scan_qualifies }}
+      resolution: ${{ steps.scan-result.outputs.resolution }}
+      base_sha: ${{ steps.scanned-base.outputs.sha }}
     steps:
       - name: Check out current main
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
           ref: main
           persist-credentials: false
+      - name: Record the scanned trusted main base
+        id: scanned-base
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+          scanned_base="$(git rev-parse HEAD)"
+          origin_main="$(git rev-parse origin/main)"
+          [[ "$scanned_base" =~ ^[a-f0-9]{40}$ ]] || { echo "Invalid scanned base SHA" >&2; exit 1; }
+          [[ "$scanned_base" == "$origin_main" ]] || { echo "main changed while preparing the scan" >&2; exit 1; }
+          echo "sha=$scanned_base" >> "$GITHUB_OUTPUT"
       - name: Set up Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
@@ -201,24 +207,39 @@ jobs:
 
   create-pull-request:
     name: Create verified digest-only pull request
-    needs: [discover, scan]
-    if: needs.scan.outputs.scan_qualifies == 'true'
+    needs: scan
+    if: >-
+      needs.scan.outputs.scan_qualifies == 'true' &&
+      github.event_name == 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       contents: write
       pull-requests: write
       issues: write
-    outputs:
-      pull_number: ${{ steps.eligible.outputs.pull_number }}
-      branch: ${{ steps.branch.outputs.branch }}
-      eligible: ${{ steps.eligible.outputs.eligible }}
     steps:
       - name: Check out current main with write credentials
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
           ref: main
           persist-credentials: true
+      - name: Recheck the scanned base and maintenance queue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SCANNED_BASE_SHA: ${{ needs.scan.outputs.base_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$SCANNED_BASE_SHA" =~ ^[a-f0-9]{40}$ ]] || { echo "Invalid scanned base SHA" >&2; exit 1; }
+          git fetch --no-tags origin main
+          current_main="$(git rev-parse origin/main)"
+          node scripts/base-digest-remediation.mjs verify-fresh-gate \
+            --scanned-base-sha "$SCANNED_BASE_SHA" \
+            --current-base-sha "$current_main" \
+            --queue <(gh api --paginate --slurp \
+              "/repos/$GITHUB_REPOSITORY/pulls?state=open&base=main&per_page=100")
+          git switch --detach "$SCANNED_BASE_SHA"
+          [[ "$(git rev-parse HEAD)" == "$SCANNED_BASE_SHA" ]] || { echo "Could not restore the scanned base" >&2; exit 1; }
       - name: Set up Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
@@ -238,8 +259,9 @@ jobs:
           echo "branch=$branch" >> "$GITHUB_OUTPUT"
       - name: Generate and verify the digest-only change
         env:
-          RESOLUTION_JSON: ${{ needs.discover.outputs.resolution }}
+          RESOLUTION_JSON: ${{ needs.scan.outputs.resolution }}
           SCAN_DELTA_JSON: ${{ needs.scan.outputs.scan_delta }}
+          SCANNED_BASE_SHA: ${{ needs.scan.outputs.base_sha }}
         shell: bash
         run: |
           set -euo pipefail
@@ -253,8 +275,8 @@ jobs:
             --baseline "$RUNNER_TEMP/Dockerfile.current" \
             --candidate Dockerfile \
             --resolution "$RUNNER_TEMP/resolution.json"
-          [[ "$(git diff --name-only)" == 'Dockerfile' ]] || { echo "Candidate changed files other than Dockerfile" >&2; exit 1; }
-          git diff --check
+          [[ "$(git diff --name-only "$SCANNED_BASE_SHA")" == 'Dockerfile' ]] || { echo "Candidate changed files other than Dockerfile" >&2; exit 1; }
+          git diff --check "$SCANNED_BASE_SHA"
           node scripts/base-digest-remediation.mjs write-pr-metadata \
             --resolution-json "$RESOLUTION_JSON" \
             --scan-delta-json "$SCAN_DELTA_JSON" \
@@ -263,10 +285,12 @@ jobs:
       - name: Commit and push the verified candidate
         env:
           BRANCH: ${{ steps.branch.outputs.branch }}
+          SCANNED_BASE_SHA: ${{ needs.scan.outputs.base_sha }}
         shell: bash
         run: |
           set -euo pipefail
-          git switch --create "$BRANCH"
+          git switch --create "$BRANCH" "$SCANNED_BASE_SHA"
+          [[ "$(git rev-parse HEAD)" == "$SCANNED_BASE_SHA" ]] || { echo "Branch is not based on the scanned main SHA" >&2; exit 1; }
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -- Dockerfile
@@ -274,7 +298,10 @@ jobs:
           git diff --cached --check
           git diff --cached --quiet && { echo "No candidate change to commit" >&2; exit 1; }
           git commit -m 'chore: remediate Node base-image digest'
+          local_head="$(git rev-parse HEAD)"
           git push origin "HEAD:refs/heads/$BRANCH"
+          remote_head="$(git ls-remote --heads origin "refs/heads/$BRANCH" | awk '{print $1}')"
+          [[ "$remote_head" == "$local_head" ]] || { echo "Remote branch does not match the verified commit" >&2; exit 1; }
       - name: Ensure the reserved remediation label exists
         env:
           GH_TOKEN: ${{ github.token }}
@@ -292,9 +319,16 @@ jobs:
         env:
           BRANCH: ${{ steps.branch.outputs.branch }}
           GH_TOKEN: ${{ github.token }}
+          SCANNED_BASE_SHA: ${{ needs.scan.outputs.base_sha }}
         shell: bash
         run: |
           set -euo pipefail
+          git fetch --no-tags origin main
+          node scripts/base-digest-remediation.mjs verify-fresh-gate \
+            --scanned-base-sha "$SCANNED_BASE_SHA" \
+            --current-base-sha "$(git rev-parse origin/main)" \
+            --queue <(gh api --paginate --slurp \
+              "/repos/$GITHUB_REPOSITORY/pulls?state=open&base=main&per_page=100")
           pull_url="$(gh pr create \
             --repo "$GITHUB_REPOSITORY" \
             --base main \
@@ -305,73 +339,38 @@ jobs:
           pull_number="$(gh pr view "$pull_url" --repo "$GITHUB_REPOSITORY" --json number --jq .number)"
           [[ "$pull_number" =~ ^[1-9][0-9]*$ ]] || { echo "Invalid pull request number" >&2; exit 1; }
           echo "number=$pull_number" >> "$GITHUB_OUTPUT"
-      - name: Verify remote pull request eligibility exactly
-        id: eligible
+      - name: Verify the remote PR is the scanned digest-only candidate
         env:
           BRANCH: ${{ steps.branch.outputs.branch }}
           GH_TOKEN: ${{ github.token }}
-          RESOLUTION_JSON: ${{ needs.discover.outputs.resolution }}
+          RESOLUTION_JSON: ${{ needs.scan.outputs.resolution }}
           SCAN_DELTA_JSON: ${{ needs.scan.outputs.scan_delta }}
+          SCANNED_BASE_SHA: ${{ needs.scan.outputs.base_sha }}
         shell: bash
         run: |
           set -euo pipefail
           pull_number="${{ steps.pull-request.outputs.number }}"
-          gh pr view "$pull_number" --repo "$GITHUB_REPOSITORY" \
-            --json headRepository,headRefName,baseRefName,labels,body,title \
-            > "$RUNNER_TEMP/pull-request.json"
+          gh api "/repos/$GITHUB_REPOSITORY/pulls/$pull_number" > "$RUNNER_TEMP/pull-request.json"
+          mapfile -t refs < <(jq -r '.base.sha, .head.sha' "$RUNNER_TEMP/pull-request.json")
+          base_sha="${refs[0]}"
+          head_sha="${refs[1]}"
+          [[ "$base_sha" == "$SCANNED_BASE_SHA" ]] || { echo "Pull request base no longer matches the scanned main SHA" >&2; exit 1; }
+          [[ "$head_sha" =~ ^[a-f0-9]{40}$ ]] || { echo "Invalid pull request head SHA" >&2; exit 1; }
           gh api "/repos/$GITHUB_REPOSITORY/pulls/$pull_number/files?per_page=100" \
             > "$RUNNER_TEMP/pull-request-files.json"
-          node scripts/base-digest-remediation.mjs verify-pr \
+          gh api -H 'Accept: application/vnd.github.raw+json' \
+            "/repos/$GITHUB_REPOSITORY/contents/Dockerfile?ref=$base_sha" \
+            > "$RUNNER_TEMP/Dockerfile.base"
+          gh api -H 'Accept: application/vnd.github.raw+json' \
+            "/repos/$GITHUB_REPOSITORY/contents/Dockerfile?ref=$head_sha" \
+            > "$RUNNER_TEMP/Dockerfile.head"
+          node scripts/base-digest-remediation.mjs verify-pr-evidence \
             --pull-request "$RUNNER_TEMP/pull-request.json" \
             --files "$RUNNER_TEMP/pull-request-files.json" \
+            --baseline "$RUNNER_TEMP/Dockerfile.base" \
+            --candidate "$RUNNER_TEMP/Dockerfile.head" \
             --repository "$GITHUB_REPOSITORY" \
             --branch "$BRANCH" \
+            --base-sha "$SCANNED_BASE_SHA" \
             --resolution-json "$RESOLUTION_JSON" \
             --scan-delta-json "$SCAN_DELTA_JSON"
-          echo "pull_number=$pull_number" >> "$GITHUB_OUTPUT"
-          echo 'eligible=true' >> "$GITHUB_OUTPUT"
-
-  enable-auto-merge:
-    name: Enable verified GitHub auto-merge
-    needs: [discover, scan, create-pull-request]
-    if: needs.create-pull-request.outputs.eligible == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      pull-requests: write
-    steps:
-      - name: Check out verification helper
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
-        with:
-          ref: main
-          persist-credentials: false
-      - name: Set up Node
-        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
-        with:
-          node-version-file: .node-version
-          cache: npm
-      - name: Re-verify and enable auto-merge without bypassing checks
-        env:
-          BRANCH: ${{ needs.create-pull-request.outputs.branch }}
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ needs.create-pull-request.outputs.pull_number }}
-          RESOLUTION_JSON: ${{ needs.discover.outputs.resolution }}
-          SCAN_DELTA_JSON: ${{ needs.scan.outputs.scan_delta }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]] || { echo "Invalid pull request number" >&2; exit 1; }
-          gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" \
-            --json headRepository,headRefName,baseRefName,labels,body,title \
-            > "$RUNNER_TEMP/pull-request.json"
-          gh api "/repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files?per_page=100" \
-            > "$RUNNER_TEMP/pull-request-files.json"
-          node scripts/base-digest-remediation.mjs verify-pr \
-            --pull-request "$RUNNER_TEMP/pull-request.json" \
-            --files "$RUNNER_TEMP/pull-request-files.json" \
-            --repository "$GITHUB_REPOSITORY" \
-            --branch "$BRANCH" \
-            --resolution-json "$RESOLUTION_JSON" \
-            --scan-delta-json "$SCAN_DELTA_JSON"
-          gh pr merge "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --auto --merge

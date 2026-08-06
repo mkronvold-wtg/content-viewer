@@ -38,11 +38,11 @@ repository:
 1. Require the `Validate` status check for `main` and enable/configure merge
    queue if the repository uses it.
 2. Enable Dependabot alerts and Dependabot security updates.
-3. Define a deliberately scoped auto-merge policy. Do not grant broad
-   auto-merge or workflow write permissions. The repository's only source
-   auto-merge lane is `Node base-image digest remediation`: GitHub
-   administrators must enable repository auto-merge and required checks
-   separately; this repository does not claim those settings are enabled.
+3. The repository currently reports `allow_auto_merge: false`. Keep the
+   `Node base-image digest remediation` lane PR-only; it must not request or
+   enable auto-merge. A future trusted auto-merge design requires repository
+   support and enabled auto-merge plus administrator-enforced required
+   checks/rulesets (and merge queue if used), all configured separately.
 
 
 ## Security scan and dependency review
@@ -68,26 +68,28 @@ settings, not evidence that this repository has configured them.
 
 ## Base-image digest remediation
 
-Keep `.github/workflows/base-digest-remediation.yml` limited to the scheduled,
-same-tag official Node digest remediation lane. Its explicit deployment
-platform is `linux/amd64`; never infer another platform from a runner or add a
-mutable-tag fallback. The helper must use only HTTPS access to
+Keep `.github/workflows/base-digest-remediation.yml` limited to its trusted
+default-branch schedule and the same-tag official Node digest remediation
+lane. Do not add `workflow_dispatch`, `workflow_call`, branch-selectable
+events, or any other route from untrusted branch-controlled workflow code to
+its write job. Its explicit deployment platform is `linux/amd64`; never infer
+another platform from a runner or add a mutable-tag fallback. The helper must use only HTTPS access to
 `registry-1.docker.io/library/node`, validate the manifest index and selected
 platform manifest, and reject untrusted tags, repositories, registries,
 platforms, and digests. Keep its unit tests offline.
 
-The workflow's default manual `dry_run=true` may resolve and report a
-candidate, but must not build, scan, branch, create a PR, publish, or deploy.
-A live scheduled/manual run may create a PR only after both final runtime
+Only the scheduled run may create a PR, and only after both final runtime
 images pass the existing Trivy exception policy, the candidate removes an
 accepted High/Critical finding with no new finding at any severity, and exact
-local and remote checks prove that only `Dockerfile`'s digest changed.
+local and remote checks prove that only `Dockerfile`'s digest changed. After
+the scan, re-fetch `origin/main` and the maintenance queue; refuse PR creation
+unless the scanned base SHA remains current and the queue is clear. Create a
+new branch from that exact SHA; never update or reuse an existing branch.
 
 Do not broaden its token permissions, use `pull_request_target`, secrets,
 registry credentials, force pushes, or administrator merge bypasses. The
-write job is only for its unique action-created branch/PR; the auto-merge job
-must re-verify same-repository ownership, evidence marker, expected label,
-scan delta, and the exact one-file remote diff, then use GitHub auto-merge so
-required checks and merge queue remain in force. Forks must be refused. This
-lane never deploys production or changes Compose, Artifactory, generic
-Dependabot settings, or application runtime Git behavior.
+write job is only for its unique action-created branch/PR; it must re-verify
+same-repository ownership, evidence marker, expected label, scan delta, exact
+base SHA, and the exact one-file remote semantic diff. Forks must be refused.
+This lane never deploys production, requests a merge, or changes Compose,
+Artifactory, generic Dependabot settings, or application runtime Git behavior.

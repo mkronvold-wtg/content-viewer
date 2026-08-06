@@ -100,14 +100,16 @@ protection, registry publishing, Artifactory, or Xray.
 
 ## Node base-image digest remediation
 
-`Node base-image digest remediation` runs every Tuesday and can be started from
-the Actions UI. Its deployment platform is explicitly fixed to
-`linux/amd64`; it is neither inferred from a GitHub runner nor intended to
-describe every developer machine. The workflow parses the pinned `node:26...`
-reference actually present in `Dockerfile`, then contacts only Docker Hub's
-official `registry-1.docker.io/library/node` endpoint for that **same tag**.
-It verifies the tag's manifest index and the selected `linux/amd64` child
-manifest before considering a new digest.
+`Node base-image digest remediation` runs only on its Tuesday `schedule`.
+GitHub evaluates scheduled workflows from the trusted default branch; there is
+no manual-dispatch path, reusable workflow entry point, or branch-selectable
+event that can receive the workflow's write token. Its deployment platform is
+explicitly fixed to `linux/amd64`; it is neither inferred from a GitHub runner
+nor intended to describe every developer machine. The workflow parses the
+pinned `node:26...` reference actually present in `Dockerfile`, then contacts
+only Docker Hub's official `registry-1.docker.io/library/node` endpoint for
+that **same tag**. It verifies the tag's manifest index and the selected
+`linux/amd64` child manifest before considering a new digest.
 
 For an offline, no-network parsing dry run:
 
@@ -116,25 +118,25 @@ node scripts/base-digest-remediation.mjs inspect --dockerfile Dockerfile --platf
 npm run test:base-digest-remediation
 ```
 
-For a GitHub Actions dry run, select **Run workflow** and leave `dry_run` set
-to `true`. It performs the official-registry and open-maintenance-PR checks,
-but does not build, scan, create a branch, or create a PR. A deliberately
-authorized manual run with `dry_run=false` uses the same full lane as the
-schedule; it never publishes an image or deploys production.
-
 A scheduled run creates no PR unless all of the following are true:
 
 1. The official same-tag manifest digest differs from the pinned digest and
    contains exactly one verified `linux/amd64` manifest.
 2. No open dependency, release-pin, or prior base-digest remediation PR is
-   being serialized ahead of it.
+   is being serialized ahead of it, including in a fresh check immediately
+   after the candidate scan.
 3. Both current and candidate **final runtime** images build for the recorded
    platform, scan successfully with the committed Trivy exception policy, and
    pass all helper tests and policy checks.
 4. The candidate removes at least one currently accepted High/Critical
    finding and introduces no finding at any severity.
-5. The candidate reconstructs as an exact `Dockerfile` digest-only change;
-   the remote PR file list is also exactly `Dockerfile`.
+5. The freshly re-fetched `origin/main` SHA still exactly matches the SHA used
+   for the scan. A unique branch is created from that exact SHA, never reused
+   or force-pushed, and must reconstruct as an exact `Dockerfile`
+   digest-only change.
+6. The remote PR is still based on that SHA; its changed-file list is exactly
+   `Dockerfile`, and its base/head Dockerfile bytes semantically prove the
+   resolved old-to-new pinned digest transformation.
 
 The PR carries the `base-digest-remediation` label and records old/new tag and
 platform-manifest digests, the official manifest endpoint, target platform,
@@ -142,20 +144,20 @@ and scan delta. Registry, manifest, build, scanner, or policy failures fail
 the workflow and retain evidence where available; a correctly completed
 no-candidate or non-qualifying scan simply creates no PR.
 
-The workflow can only run its write and auto-merge jobs for the canonical
-same-repository workflow, uses a unique action-owned branch, refuses forks,
-and never force-pushes or overwrites a branch. Its final job only calls GitHub
-**auto-merge** after independently rechecking the generated evidence, label,
-same-repository branch, and exact file list. It does not use an administrator
-bypass, so required CI/security checks and a configured merge queue continue
-to govern the merge.
+The workflow's write job can run only from that scheduled trusted workflow,
+uses a unique action-owned branch, refuses forks, and never force-pushes or
+overwrites a branch. Qualifying PRs retain the scoped
+`base-digest-remediation` label and the scan/registry evidence in their body.
 
-**Administrator action still required:** enable repository auto-merge and
-require the checks listed above (and configure merge queue if it is used).
-This repository cannot enable those GitHub settings and does not claim that
-they are enabled. The automatic lane is strictly a source-maintenance lane:
-it performs no production deployment, Compose change, registry publication,
-or Artifactory operation.
+**Auto-merge is not active.** The repository currently reports
+`allow_auto_merge: false`, so this workflow deliberately never requests a
+merge and leaves every PR open for review. A future trusted auto-merge design
+requires the repository to support and enable auto-merge **and** for
+administrators to enforce the required checks/rulesets (and merge queue, if
+used) outside this repository. This repository cannot configure those
+controls and does not claim they are enabled. The scheduled lane is strictly a
+source-maintenance lane: it performs no production deployment, Compose change,
+registry publication, or Artifactory operation.
 
 ## Current deployment
 

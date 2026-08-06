@@ -11,6 +11,7 @@ const OFFICIAL_SOURCE = Object.freeze({
 });
 const DEFAULT_DEPLOYMENT_PLATFORM = 'linux/amd64';
 const DIGEST_PATTERN = /^sha256:[a-f0-9]{64}$/;
+const COMMIT_SHA_PATTERN = /^[a-f0-9]{40}$/;
 const NODE_TAG_PATTERN = /^26(?:[-.][a-z0-9][a-z0-9._-]*)?$/;
 const PLATFORM_PATTERN = /^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*$/;
 const NODE_FROM_PATTERN = /^\s*FROM\s+(?:--platform=[^\s]+\s+)?(node:([a-z0-9][a-z0-9._-]*)@(sha256:[a-f0-9]{64}))(?:\s+AS\s+([a-z0-9][a-z0-9_.-]*))?\s*(?:#.*)?$/im;
@@ -40,6 +41,13 @@ function assertPlainObject(value, field) {
 function assertDigest(value, field) {
   if (typeof value !== 'string' || !DIGEST_PATTERN.test(value)) {
     fail(`${field} must be an exact lowercase sha256 digest`);
+  }
+  return value;
+}
+
+function assertCommitSha(value, field) {
+  if (typeof value !== 'string' || !COMMIT_SHA_PATTERN.test(value)) {
+    fail(`${field} must be an exact lowercase Git commit SHA`);
   }
   return value;
 }
@@ -471,6 +479,19 @@ function validateQueueStatus(value) {
   return value;
 }
 
+export function verifyFreshMaintenanceGate({ scannedBaseSha, currentBaseSha, queue }) {
+  const scanned = assertCommitSha(scannedBaseSha, 'scanned main base SHA');
+  const current = assertCommitSha(currentBaseSha, 'current main base SHA');
+  const queueStatus = validateQueueStatus(queue);
+  if (scanned !== current) {
+    fail('main changed after the candidate was scanned');
+  }
+  if (!queueStatus.clear) {
+    fail('an open dependency, release-pin, or digest-maintenance pull request blocks creation');
+  }
+  return true;
+}
+
 function assertRepository(value) {
   if (value !== 'mkronvold-wtg/content-viewer') {
     fail('automatic remediation is restricted to mkronvold-wtg/content-viewer');
@@ -478,20 +499,33 @@ function assertRepository(value) {
   return value;
 }
 
-export function verifyPullRequestEligibility({ pullRequest, changedFiles, repository, branch, resolution, scanDelta }) {
+export function verifyPullRequestEvidence({
+  pullRequest,
+  changedFiles,
+  baselineDockerfile,
+  candidateDockerfile,
+  repository,
+  branch,
+  expectedBaseSha,
+  resolution,
+  scanDelta,
+}) {
   assertRepository(repository);
   if (typeof branch !== 'string' || !/^base-digest-remediation\/[1-9][0-9]*$/.test(branch)) {
     fail('automatic remediation branch name is invalid');
   }
+  const verifiedBaseSha = assertCommitSha(expectedBaseSha, 'expected pull request base SHA');
   const verifiedResolution = validateResolution(resolution);
   const verifiedDelta = validateScanDelta(scanDelta);
   if (!verifiedResolution.candidate || !verifiedDelta.qualifies) {
     fail('automatic remediation requires a qualifying candidate and scan delta');
   }
   assertPlainObject(pullRequest, 'pull request');
-  if (pullRequest.headRepository?.nameWithOwner !== repository || pullRequest.headRefName !== branch || pullRequest.baseRefName !== 'main') {
+  if (pullRequest.head?.repo?.full_name !== repository || pullRequest.head?.ref !== branch
+    || pullRequest.base?.ref !== 'main' || pullRequest.base?.sha !== verifiedBaseSha) {
     fail('automatic remediation requires an action-created same-repository branch targeting main');
   }
+  assertCommitSha(pullRequest.head?.sha, 'pull request head SHA');
   const labels = Array.isArray(pullRequest.labels) ? pullRequest.labels.map((label) => label?.name) : [];
   if (!labels.includes(REMEDIATION_LABEL)) fail(`pull request is missing the ${REMEDIATION_LABEL} label`);
   if (typeof pullRequest.body !== 'string' || !pullRequest.body.includes(REMEDIATION_MARKER)
@@ -507,6 +541,7 @@ export function verifyPullRequestEligibility({ pullRequest, changedFiles, reposi
   if (files.length !== 1 || files[0]?.filename !== 'Dockerfile' || files[0]?.status !== 'modified') {
     fail('automatic remediation requires an exact Dockerfile-only pull request');
   }
+  verifyDigestOnlyDockerfileChange(baselineDockerfile, candidateDockerfile, verifiedResolution);
   return true;
 }
 
@@ -668,6 +703,16 @@ async function main() {
     await writeJson(option(options, '--output'), checkMaintenanceQueue(await readJson(option(options, '--input'), 'open pull requests')));
     return;
   }
+  if (command === 'verify-fresh-gate') {
+    rejectUnknown(options, ['--scanned-base-sha', '--current-base-sha', '--queue']);
+    verifyFreshMaintenanceGate({
+      scannedBaseSha: option(options, '--scanned-base-sha'),
+      currentBaseSha: option(options, '--current-base-sha'),
+      queue: await readJson(option(options, '--queue'), 'maintenance queue status'),
+    });
+    console.log('Scanned main base and maintenance queue remain safe for PR creation.');
+    return;
+  }
   if (command === 'workflow-outputs') {
     rejectUnknown(options, ['--resolution', '--queue', '--scan-delta']);
     const resolution = validateResolution(await readJson(option(options, '--resolution'), 'resolution'));
@@ -698,8 +743,8 @@ async function main() {
     await writeFile(resolve(option(options, '--title-output')), `${metadata.title}\n`, 'utf8');
     return;
   }
-  if (command === 'verify-pr') {
-    rejectUnknown(options, ['--pull-request', '--files', '--repository', '--branch', '--resolution-json', '--scan-delta-json']);
+  if (command === 'verify-pr-evidence') {
+    rejectUnknown(options, ['--pull-request', '--files', '--baseline', '--candidate', '--repository', '--branch', '--base-sha', '--resolution-json', '--scan-delta-json']);
     let resolution;
     let delta;
     try {
@@ -708,15 +753,18 @@ async function main() {
     } catch (error) {
       fail(`cannot parse pull request verification input: ${error.message}`);
     }
-    verifyPullRequestEligibility({
+    verifyPullRequestEvidence({
       pullRequest: await readJson(option(options, '--pull-request'), 'pull request'),
       changedFiles: await readJson(option(options, '--files'), 'pull request files'),
+      baselineDockerfile: await readText(option(options, '--baseline'), 'baseline Dockerfile'),
+      candidateDockerfile: await readText(option(options, '--candidate'), 'candidate Dockerfile'),
       repository: option(options, '--repository'),
       branch: option(options, '--branch'),
+      expectedBaseSha: option(options, '--base-sha'),
       resolution,
       scanDelta: delta,
     });
-    console.log('Pull request is eligible for GitHub auto-merge.');
+    console.log('Pull request evidence matches the scanned digest-only candidate.');
     return;
   }
   fail(`unknown command ${command}`);

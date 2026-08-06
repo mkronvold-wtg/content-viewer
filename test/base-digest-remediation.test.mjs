@@ -1,13 +1,17 @@
+import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  checkMaintenanceQueue,
   evaluateCandidateScanDelta,
   parsePinnedNodeDockerfile,
   replacePinnedNodeDigest,
   resolveDockerfileCandidate,
   selectPlatformDescriptor,
   validateDeploymentPlatform,
-  verifyPullRequestEligibility,
+  verifyFreshMaintenanceGate,
+  verifyPullRequestEvidence,
 } from '../scripts/base-digest-remediation.mjs';
 
 const digest = (character) => `sha256:${character.repeat(64)}`;
@@ -17,6 +21,7 @@ const currentPlatformDigest = digest('c');
 const candidatePlatformDigest = digest('d');
 const currentConfigDigest = digest('e');
 const candidateConfigDigest = digest('f');
+const scannedBaseSha = '1'.repeat(40);
 const dockerfile = [
   `FROM node:26-bookworm-slim@${currentDigest} AS dependencies`,
   'RUN true',
@@ -165,7 +170,7 @@ test('qualifies only a High or Critical remediation with no new findings', () =>
   assert.equal(rejected.introduced[0].id, 'CVE-new');
 });
 
-test('auto-merge eligibility requires same-repository Dockerfile-only evidence', () => {
+test('PR evidence requires the scanned base and exact Dockerfile digest substitution', () => {
   const resolution = {
     version: 1,
     source: {
@@ -202,9 +207,15 @@ test('auto-merge eligibility requires same-repository Dockerfile-only evidence',
     qualifies: true,
   };
   const pullRequest = {
-    headRepository: { nameWithOwner: 'mkronvold-wtg/content-viewer' },
-    headRefName: 'base-digest-remediation/123',
-    baseRefName: 'main',
+    head: {
+      repo: { full_name: 'mkronvold-wtg/content-viewer' },
+      ref: 'base-digest-remediation/123',
+      sha: '2'.repeat(40),
+    },
+    base: {
+      ref: 'main',
+      sha: scannedBaseSha,
+    },
     labels: [{ name: 'base-digest-remediation' }],
     title: 'chore: remediate node:26-bookworm-slim base digest',
     body: [
@@ -214,20 +225,75 @@ test('auto-merge eligibility requires same-repository Dockerfile-only evidence',
       '<!-- base-digest-remediation: verified dockerfile-only high-critical-remediation -->',
     ].join('\n'),
   };
-  assert.equal(verifyPullRequestEligibility({
+  const candidateDockerfile = replacePinnedNodeDigest(dockerfile, currentDigest, candidateDigest);
+  assert.equal(verifyPullRequestEvidence({
     pullRequest,
     changedFiles: [{ filename: 'Dockerfile', status: 'modified' }],
+    baselineDockerfile: dockerfile,
+    candidateDockerfile,
     repository: 'mkronvold-wtg/content-viewer',
     branch: 'base-digest-remediation/123',
+    expectedBaseSha: scannedBaseSha,
     resolution,
     scanDelta,
   }), true);
-  assert.throws(() => verifyPullRequestEligibility({
+  assert.throws(() => verifyPullRequestEvidence({
     pullRequest,
     changedFiles: [{ filename: 'Dockerfile', status: 'modified' }, { filename: 'README.md', status: 'modified' }],
+    baselineDockerfile: dockerfile,
+    candidateDockerfile,
     repository: 'mkronvold-wtg/content-viewer',
     branch: 'base-digest-remediation/123',
+    expectedBaseSha: scannedBaseSha,
     resolution,
     scanDelta,
   }), /Dockerfile-only/);
+  assert.throws(() => verifyPullRequestEvidence({
+    pullRequest,
+    changedFiles: [{ filename: 'Dockerfile', status: 'modified' }],
+    baselineDockerfile: dockerfile,
+    candidateDockerfile: candidateDockerfile.replace('RUN true', 'RUN false'),
+    repository: 'mkronvold-wtg/content-viewer',
+    branch: 'base-digest-remediation/123',
+    expectedBaseSha: scannedBaseSha,
+    resolution,
+    scanDelta,
+  }), /other than the pinned Node digest/);
+});
+
+test('rejects a stale scanned base or newly occupied maintenance queue', () => {
+  const clearQueue = checkMaintenanceQueue([]);
+  assert.equal(verifyFreshMaintenanceGate({
+    scannedBaseSha,
+    currentBaseSha: scannedBaseSha,
+    queue: clearQueue,
+  }), true);
+  assert.throws(() => verifyFreshMaintenanceGate({
+    scannedBaseSha,
+    currentBaseSha: '3'.repeat(40),
+    queue: clearQueue,
+  }), /main changed after the candidate was scanned/);
+  const blockedQueue = checkMaintenanceQueue([{
+    number: 9,
+    head: { ref: 'dependabot/npm_and_yarn/mermaid-11.13.0' },
+    labels: [],
+  }]);
+  assert.equal(blockedQueue.clear, false);
+  assert.throws(() => verifyFreshMaintenanceGate({
+    scannedBaseSha,
+    currentBaseSha: scannedBaseSha,
+    queue: blockedQueue,
+  }), /blocks creation/);
+});
+
+test('remediation workflow accepts only scheduled trusted execution and never enables auto-merge', async () => {
+  const root = resolve(process.cwd());
+  const workflow = await readFile(resolve(root, '.github/workflows/base-digest-remediation.yml'), 'utf8');
+  assert.match(workflow, /^on:\r?\n  schedule:/m);
+  assert.doesNotMatch(workflow, /^\s*workflow_dispatch:/m);
+  assert.match(workflow, /create-pull-request:[\s\S]*?github\.event_name == 'schedule'/);
+  assert.doesNotMatch(workflow, /enable-auto-merge|gh pr merge|--auto/);
+  const actions = [...workflow.matchAll(/^\s*uses:\s*[^@\s]+@([a-f0-9]{40})(?:\s+#.*)?$/gm)];
+  assert.ok(actions.length > 0);
+  assert.equal(actions.every(([, pin]) => /^[a-f0-9]{40}$/.test(pin)), true);
 });
