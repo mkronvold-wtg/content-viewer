@@ -873,6 +873,10 @@ function parseRepoRoute(appState, pathname) {
     };
 }
 
+function hasPresentationRequest(url) {
+    return url.searchParams.getAll("present").length === 1 && url.searchParams.get("present") === "1";
+}
+
 function renderHtml(appState, initialView = {}) {
     const repos = appState.repos.map(publicRepoConfig);
     const themeConfig = THEME_CONFIG;
@@ -1943,6 +1947,7 @@ function renderHtml(appState, initialView = {}) {
     const navPinnedStorageKey = "content-viewer-nav-pinned";
     const navWidthStorageKey = "content-viewer-nav-width";
     const tagPinnedStorageKey = "content-viewer-tag-pinned";
+    const searchSessionStorageKey = "content-viewer-search";
     const themeIds = ${JSON.stringify(themeConfig.themeIds)};
     const themeAliases = ${JSON.stringify(themeConfig.themeAliases)};
     const themeMeta = ${JSON.stringify(themeConfig.themeMeta)};
@@ -2181,6 +2186,53 @@ function renderHtml(appState, initialView = {}) {
     function documentUrl(path, slug = activeRepo) {
       const encodedPath = encodeDocumentPath(path);
       return window.location.origin + repoPathPrefix(slug) + (encodedPath ? "/" + encodedPath : "");
+    }
+
+    function documentNavigationUrl(path) {
+      const currentUrl = new URL(window.location.href);
+      const encodedPath = encodeDocumentPath(path);
+      currentUrl.pathname = repoPathPrefix(activeRepo) + (encodedPath ? "/" + encodedPath : "");
+      return currentUrl;
+    }
+
+    function updatePresentationUrl(isPresenting) {
+      if (!window.history?.replaceState) {
+        return;
+      }
+
+      const currentUrl = new URL(window.location.href);
+      if (isPresenting) {
+        currentUrl.searchParams.set("present", "1");
+      } else {
+        currentUrl.searchParams.delete("present");
+      }
+      window.history.replaceState({ repo: activeRepo, path: activePath }, "", currentUrl);
+    }
+
+    function setPresentationMode(isPresenting) {
+      document.body.classList.toggle("presenting", isPresenting);
+      updatePresentationUrl(isPresenting);
+    }
+
+    function getStoredSearchQuery() {
+      try {
+        return sessionStorage.getItem(searchSessionStorageKey) ?? "";
+      } catch {
+        return "";
+      }
+    }
+
+    function persistSearchQuery(value) {
+      try {
+        const query = String(value ?? "");
+        if (query) {
+          sessionStorage.setItem(searchSessionStorageKey, query);
+        } else {
+          sessionStorage.removeItem(searchSessionStorageKey);
+        }
+      } catch {
+        // Search remains available when browser storage is unavailable.
+      }
     }
 
     function apiUrl(path, params = {}) {
@@ -3194,6 +3246,7 @@ function renderHtml(appState, initialView = {}) {
     }
 
     async function search() {
+      persistSearchQuery(searchInput.value);
       const query = searchInput.value.trim();
       highlightTokens = parseSearchQuery(query).tokens.filter((token) => token.length > 1);
       statusElement.textContent = "Searching...";
@@ -3258,12 +3311,12 @@ function renderHtml(appState, initialView = {}) {
         docTags.innerHTML = doc.tags.map((tag) => '<span class="pill">' + escapeHtml(tag) + "</span>").join("");
         renderActiveTagList();
         if (options.presentMode) {
-          document.body.classList.add("presenting");
+          setPresentationMode(true);
           paginateLevel.value = "---";
         }
         await renderCurrentDocument();
         if (!options.skipHistory && window.history?.pushState) {
-          window.history.pushState({ repo: activeRepo, path }, "", documentUrl(path));
+          window.history.pushState({ repo: activeRepo, path }, "", documentNavigationUrl(path));
         }
         if (rerenderResults) {
           await search();
@@ -3352,6 +3405,7 @@ function renderHtml(appState, initialView = {}) {
     }
 
     searchInput.addEventListener("input", () => {
+      persistSearchQuery(searchInput.value);
       clearTimeout(searchTimer);
       searchTimer = setTimeout(search, 180);
     });
@@ -3448,10 +3502,23 @@ function renderHtml(appState, initialView = {}) {
     });
 
     presentToggle.addEventListener("click", async () => {
-      const isPresenting = document.body.classList.toggle("presenting");
+      const isPresenting = !document.body.classList.contains("presenting");
+      setPresentationMode(isPresenting);
       if (isPresenting) {
         paginateLevel.value = "---";
       }
+      currentPageIndex = 0;
+      wheelPageDelta = 0;
+      await renderCurrentDocument();
+    });
+
+    document.addEventListener("keydown", async (event) => {
+      if (event.key !== "Escape" || !document.body.classList.contains("presenting")) {
+        return;
+      }
+
+      event.preventDefault();
+      setPresentationMode(false);
       currentPageIndex = 0;
       wheelPageDelta = 0;
       await renderCurrentDocument();
@@ -3503,6 +3570,10 @@ function renderHtml(appState, initialView = {}) {
       updatePresentationControls();
       if (initialDocPath) {
         await openDocument(initialDocPath, false, { skipHistory: true, presentMode: initialPresentMode });
+      }
+      const storedSearchQuery = getStoredSearchQuery();
+      if (storedSearchQuery) {
+        searchInput.value = storedSearchQuery;
       }
       await search();
       searchInput.focus();
@@ -3668,7 +3739,7 @@ async function handleRequest(appState, req, res) {
             sendHtml(res, renderHtml(appState, {
                 repoSlug: repoRoute.repoSlug,
                 docPath: repoRoute.docPath,
-                presentMode: false,
+                presentMode: hasPresentationRequest(url),
             }));
             return;
         }
