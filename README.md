@@ -41,6 +41,22 @@ The current shared deployment runs on `dockerhost` and is served at:
 https://kpe-content.dev.e2open.com/
 ```
 
+## Phase 0 operations and security baseline
+
+The repository's deployment and rollback guardrails are in
+[`docs/operations.md`](docs/operations.md). They distinguish the local Compose
+target from the dockerhost NPM/proxy target, define the required pending
+baseline evidence, and protect the persistent content-clone volume.
+
+`POST /api/refresh` intentionally remains public at the application layer
+behind the existing trusted proxy/network boundary. Proxy authorization and
+rate-limit verification are external operator responsibilities; this
+repository does not configure or verify either control.
+
+No automatic image promotion is authorized until later phases supply the
+required scan, immutable-image, health, and copied-volume rehearsal evidence
+described in the runbook.
+
 ## Docker Compose quick start
 
 1. Copy the example environment file:
