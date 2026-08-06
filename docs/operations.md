@@ -131,3 +131,23 @@ enforced by the owners below.
 
 Security exceptions, if later needed for a scanner finding or temporary
 control gap, must use [`docs/security-exceptions.md`](security-exceptions.md).
+
+
+## Phase 2 scanner evidence and handoff
+
+The repository now supplies the `Security scan` workflow. It builds the final
+runtime image without publishing it, scans the filesystem/lockfile and local
+final image with Trivy, preserves JSON/SARIF evidence as a GitHub Actions
+artifact, and enforces the approved-exception policy against High/Critical
+findings. For the unpushed CI image, the workflow records Docker's immutable
+image content ID; it does not claim a registry manifest digest exists.
+
+The workflow's SARIF upload is best-effort only where GitHub grants
+`security-events: write`; fork pull requests skip the upload while still
+running the scanner and enforcement. The pinned dependency-review workflow
+blocks newly introduced high/critical runtime dependency vulnerabilities.
+
+GitHub administrators must require the three named checks documented in the
+README before treating them as a merge gate. This repository has not inspected
+or configured branch protection, Xray, Artifactory, registry publishing,
+automatic remediation, auto-merge, or deployment behavior.

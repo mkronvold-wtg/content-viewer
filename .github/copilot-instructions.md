@@ -42,3 +42,25 @@ repository:
    auto-merge or workflow write permissions; if auto-merge is allowed, limit it
    to reviewed Dependabot updates that have passed `Validate`, with explicit
    exclusions for runtime, Docker, and workflow changes as appropriate.
+
+
+## Security scan and dependency review
+
+Keep `Security scan` deterministic and unprivileged except for its
+job-scoped `security-events: write` SARIF upload. It must scan both the
+filesystem/lockfile and the final runtime image, retain JSON evidence, and run
+`node scripts/enforce-trivy-policy.mjs` for each target. Do not add
+`pull_request_target`, secrets, Artifactory credentials, registry publishing,
+deployment behavior, or scanner bypasses. SARIF uploads may remain
+best-effort for fork PRs; the scanner and policy must still run and fail there.
+
+Every Trivy exception must pass `npm run security:exceptions` and be an exact,
+matching entry in both `security/trivy-exceptions.json` and
+`docs/security-exceptions.md`. Do not add a low/medium or speculative
+exception. Keep dependency review SHA-pinned and limited to its read-only
+contents permission; do not change explicit Dependabot auto-merge settings.
+
+Administrators must require `Validate`, `Security scan / Trivy source and
+final-image policy`, and `Dependency review / Review changed dependencies`
+before merge. Branch protection and those required checks are external GitHub
+settings, not evidence that this repository has configured them.

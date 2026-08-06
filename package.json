@@ -11,9 +11,11 @@
     "theme:update": "node scripts/update-theme.mjs",
     "build": "npm run check",
     "check": "node --check server.mjs && node --check extension.mjs",
-    "test": "npm run test:contracts",
+    "test": "npm run test:contracts && npm run test:security-exceptions",
     "test:contracts": "node --test test/git-boundary-contracts.test.mjs",
-    "test:container": "node scripts/smoke-final-image.mjs"
+    "test:container": "node scripts/smoke-final-image.mjs",
+    "security:exceptions": "node scripts/validate-security-exceptions.mjs",
+    "test:security-exceptions": "node --test test/security-exceptions.test.mjs"
   },
   "dependencies": {
     "mermaid": "^11.12.1"

@@ -68,6 +68,37 @@ to `main`. GitHub branch protection, required checks, merge queue, Dependabot
 alerts/security updates, and any narrowly-scoped Dependabot auto-merge policy
 remain administrator actions; this repository does not claim they are enabled.
 
+## Security scanning and exception governance
+
+The **Security scan** workflow scans the filesystem/lockfile and the locally
+built final runtime image with Trivy on pull requests and pushes to `main`,
+and weekly so the current vulnerability database is reapplied. It preserves JSON
+and SARIF evidence as a workflow artifact. SARIF uploads are attempted for
+trusted repository contexts; fork pull requests still execute and enforce the
+scan policy, but do not attempt a permission that forks do not receive.
+
+Run the local governance checks with:
+
+```sh
+npm run security:exceptions
+npm run test:security-exceptions
+```
+
+The scanner itself requires Docker and Trivy (or the pinned GitHub Action). The
+workflow fails when either scanner is unavailable or produces malformed evidence;
+it blocks unapproved High/Critical findings in both scan targets. Approved,
+short-lived exceptions must be represented identically in
+`security/trivy-exceptions.json` and
+[`docs/security-exceptions.md`](docs/security-exceptions.md); the validator
+rejects expired, wildcard, incomplete, or divergent entries. No exception is
+currently approved.
+
+Repository administrators must require **Validate**, **Security scan / Trivy
+source and final-image policy**, and **Dependency review / Review changed
+dependencies** for `main`. This repository does not configure branch
+protection, automatic remediation, auto-merge, registry publishing, Artifactory,
+or Xray.
+
 ## Current deployment
 
 The current shared deployment runs on `dockerhost` and is served at:
