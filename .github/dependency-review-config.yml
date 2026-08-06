@@ -1,0 +1,8 @@
+# Dependency review blocks newly introduced high/critical runtime vulnerabilities.
+# License policy remains intentionally unset until an approved allow-list exists.
+fail-on-severity: high
+fail-on-scopes:
+  - runtime
+vulnerability-check: true
+license-check: true
+show-openssf-scorecard: false

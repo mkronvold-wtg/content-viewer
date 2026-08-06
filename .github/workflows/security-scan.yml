@@ -1,0 +1,95 @@
+name: Security scan
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 3 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-scan-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  trivy:
+    name: Trivy source and final-image policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Check out source
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+      - name: Validate exception governance
+        run: node scripts/validate-security-exceptions.mjs
+      - name: Scan filesystem and lockfile with Trivy
+        uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # v0.33.1
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln
+          format: json
+          output: trivy-source.json
+          exit-code: '0'
+          ignore-unfixed: 'false'
+          version: v0.65.0
+      - name: Build final runtime image
+        run: docker build --tag content-viewer:security-${{ github.sha }} .
+      - name: Capture immutable local image content digest
+        id: image
+        shell: bash
+        run: |
+          digest="$(docker image inspect --format='{{.Id}}' content-viewer:security-${{ github.sha }})"
+          case "$digest" in sha256:[0-9a-f][0-9a-f]*) ;; *) echo "Invalid image digest: $digest" >&2; exit 1 ;; esac
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - name: Scan final runtime image with Trivy
+        uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # v0.33.1
+        with:
+          scan-type: image
+          image-ref: content-viewer:security-${{ github.sha }}
+          scanners: vuln
+          format: json
+          output: trivy-image.json
+          exit-code: '0'
+          ignore-unfixed: 'false'
+          version: v0.65.0
+      - name: Convert evidence to SARIF
+        run: |
+          trivy convert --format sarif --output trivy-source.sarif trivy-source.json
+          trivy convert --format sarif --output trivy-image.sarif trivy-image.json
+      - name: Upload JSON and SARIF evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: trivy-evidence-${{ github.run_id }}
+          path: |
+            trivy-source.json
+            trivy-image.json
+            trivy-source.sarif
+            trivy-image.sarif
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Upload source SARIF when permitted
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@9e3211c9a3b9311dfe05da2ed48eea3386f042dd # v4.37.6
+        with:
+          sarif_file: trivy-source.sarif
+      - name: Upload final-image SARIF when permitted
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@9e3211c9a3b9311dfe05da2ed48eea3386f042dd # v4.37.6
+        with:
+          sarif_file: trivy-image.sarif
+      - name: Enforce source and final-image policy
+        run: |
+          node scripts/enforce-trivy-policy.mjs --scan filesystem --input trivy-source.json --exceptions security/trivy-exceptions.json
+          node scripts/enforce-trivy-policy.mjs --scan image --input trivy-image.json --exceptions security/trivy-exceptions.json --image-digest "${{ steps.image.outputs.digest }}"
