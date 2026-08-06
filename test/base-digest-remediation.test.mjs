@@ -293,6 +293,14 @@ test('remediation workflow accepts only scheduled trusted execution and never en
   assert.doesNotMatch(workflow, /^\s*workflow_dispatch:/m);
   assert.match(workflow, /create-pull-request:[\s\S]*?github\.event_name == 'schedule'/);
   assert.doesNotMatch(workflow, /enable-auto-merge|gh pr merge|--auto/);
+  assert.match(
+    workflow,
+    /scan:[\s\S]*?Check out current main with read-only fetch credentials[\s\S]*?persist-credentials: true[\s\S]*?git fetch --no-tags origin main/,
+  );
+  assert.doesNotMatch(
+    workflow,
+    /scan:[\s\S]*?(?:token:\s*\$\{\{[^}]+\}\}|https:\/\/[^@\s]+@github\.com)/,
+  );
   const actions = [...workflow.matchAll(/^\s*uses:\s*[^@\s]+@([a-f0-9]{40})(?:\s+#.*)?$/gm)];
   assert.ok(actions.length > 0);
   assert.equal(actions.every(([, pin]) => /^[a-f0-9]{40}$/.test(pin)), true);

@@ -77,11 +77,13 @@ jobs:
       resolution: ${{ steps.scan-result.outputs.resolution }}
       base_sha: ${{ steps.scanned-base.outputs.sha }}
     steps:
-      - name: Check out current main
+      - name: Check out current main with read-only fetch credentials
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
           ref: main
-          persist-credentials: false
+          # This scheduled scan re-fetches trusted main below. The workflow-level
+          # contents: read permission constrains the persisted GITHUB_TOKEN.
+          persist-credentials: true
       - name: Record the scanned trusted main base
         id: scanned-base
         shell: bash
