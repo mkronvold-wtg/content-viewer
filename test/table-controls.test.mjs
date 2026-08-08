@@ -99,6 +99,26 @@ function visualTable(rows) {
   };
 }
 
+function decodeHtmlAttribute(value) {
+  return value
+    .replaceAll("&quot;", '"')
+    .replaceAll("&#39;", "'")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&amp;", "&");
+}
+
+function renderedCsvTable(html, visualRows) {
+  const csvModel = html.match(/<table data-csv-model="([^"]+)"/)?.[1];
+  assert.ok(csvModel, "expected a safely encoded CSV table model");
+  return {
+    ...visualTable(visualRows),
+    getAttribute(name) {
+      return name === "data-csv-model" ? decodeHtmlAttribute(csvModel) : null;
+    },
+  };
+}
+
 test("keeps the 90 percent reader contract and intrinsic table layout in mirrored sources", async () => {
   const viewer = await mirroredViewer();
 
@@ -110,13 +130,15 @@ test("keeps the 90 percent reader contract and intrinsic table layout in mirrore
   );
   assert.match(
     viewer,
-    /\.markdown \.table-wrapper \{\s+position: relative;\s+width: max-content;\s+max-width: 100%;\s+overflow-x: auto;\s+overflow-y: hidden;/,
+    /\.markdown \.table-wrapper \{\s+width: max-content;\s+max-width: 100%;\s+border: 1px solid var\(--theme-border\);/,
   );
+  assert.match(viewer, /\.markdown \.table-actions \{\s+display: flex;\s+justify-content: flex-end;\s+padding: 6px 6px 0;/);
+  assert.match(viewer, /\.markdown \.table-scroll \{\s+width: max-content;\s+max-width: 100%;\s+overflow-x: auto;\s+overflow-y: hidden;/);
   assert.match(
     viewer,
     /\.markdown table \{\s+width: max-content;\s+min-width: 100%;\s+table-layout: auto;/,
   );
-  assert.match(viewer, /\.markdown \.table-copy-button \{\s+position: absolute;/);
+  assert.doesNotMatch(viewer, /\.markdown \.table-copy-button \{\s+position: absolute;/);
   assert.doesNotMatch(viewer, /\.markdown table \{\s+width: 100%;\s+table-layout: fixed;/);
 });
 
@@ -127,17 +149,19 @@ test("renders Markdown and CSV tables through the same copy-button wrapper", asy
   const csv = renderCsvTable("Name,Value\r\nPlain,42\r\n");
 
   for (const html of [markdown, csv]) {
-    assert.match(html, /^<div class="table-wrapper"><button class="table-copy-button"/);
+    assert.match(html, /^<div class="table-wrapper"><div class="table-actions"><button class="table-copy-button"/);
     assert.match(html, /data-copy-table title="Copy table as CSV" aria-label="Copy table as CSV"/);
     assert.match(html, /<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">/);
-    assert.match(html, /<\/button><table><thead>/);
+    assert.match(html, /<\/button><\/div><div class="table-scroll"><table(?: data-csv-model="[^"]+")?><thead>/);
     assert.equal((html.match(/data-copy-table/g) ?? []).length, 1);
   }
   assert.match(markdown, /<strong>Bold<\/strong>/);
+  assert.doesNotMatch(markdown, /data-csv-model=/);
   assert.match(csv, /<td>Plain<\/td>/);
+  assert.match(csv, /data-csv-model=/);
 });
 
-test("serializes rendered header and body text as RFC 4180 CSV", async () => {
+test("serializes Markdown tables from their visual text as RFC 4180 CSV", async () => {
   const viewer = await mirroredViewer();
   const { tableToCsv } = tableCsvActions(viewer, {}, {});
   const table = visualTable([
@@ -148,6 +172,23 @@ test("serializes rendered header and body text as RFC 4180 CSV", async () => {
   assert.equal(
     tableToCsv(table),
     'Header,Quote,Comma,LF,CRLF,Blank\r\nVisible text,"say ""hi""","a,b","one\ntwo","one\r\ntwo",',
+  );
+});
+
+test("preserves parser CSV values across real rendered multiline cells", async () => {
+  const viewer = await mirroredViewer();
+  const { renderCsvTable } = tableRenderers(viewer);
+  const { tableToCsv } = tableCsvActions(viewer, {}, {});
+  const source = 'Name,Comment,Empty,Unicode\r\nMiyuki,"first line\r\nsecond line",,こんにちは\r\n';
+  const html = renderCsvTable(source);
+  const table = renderedCsvTable(html, [
+    ["Name", "Comment", "Empty", "Unicode"],
+    ["Miyuki", "first line second line", "", "こんにちは"],
+  ]);
+
+  assert.equal(
+    tableToCsv(table),
+    'Name,Comment,Empty,Unicode\r\nMiyuki,"first line\r\nsecond line",,こんにちは',
   );
 });
 
@@ -190,6 +231,15 @@ test("reports truthful table clipboard success and failure states", async () => 
   await denied.copyTableAsCsv(wrapper);
   assert.equal(fallbackAttempted, true);
   assert.equal(denied.statusElement.textContent, "Copy failed. Table CSV could not be copied.");
+
+  const malformedTable = {
+    ...visualTable([["Name"], ["Ada"]]),
+    getAttribute: () => "not JSON",
+  };
+  const malformedWrapper = { querySelector: (selector) => selector === "table" ? malformedTable : null };
+  await success.copyTableAsCsv(malformedWrapper);
+  assert.deepEqual(copied, ["Name\r\nAda"]);
+  assert.equal(success.statusElement.textContent, "Copy failed. Table CSV could not be copied.");
 });
 
 test("delegates each table-copy click through the single document container listener", async () => {
@@ -222,6 +272,29 @@ test("delegates each table-copy click through the single document container list
   assert.equal(prevented, true);
   assert.equal(copies, 1);
   assert.equal(opens, 0);
+
+  const headerLink = {
+    closest(selector) {
+      return selector === "a[data-doc-link]" ? this : null;
+    },
+    getAttribute(name) {
+      return name === "data-doc-link" ? "linked-document.md" : "";
+    },
+  };
+  await handleDocumentContentClick(
+    { target: headerLink, preventDefault: () => { prevented = true; } },
+    { contains: () => true },
+    async () => {
+      copies += 1;
+    },
+    async (path) => {
+      opens += 1;
+      assert.equal(path, "linked-document.md");
+    },
+  );
+
+  assert.equal(copies, 1);
+  assert.equal(opens, 1);
   assert.equal((viewer.match(/docContent\.addEventListener\("click"/g) ?? []).length, 1);
   assert.doesNotMatch(viewerFunction(viewer, "renderTable"), /addEventListener/);
 });

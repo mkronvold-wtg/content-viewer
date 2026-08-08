@@ -160,9 +160,9 @@ test("renders RFC 4180 CSV cells as escaped plain-text tables", async () => {
         assert.deepEqual(parseCsv("A,B\n1,\n"), [["A", "B"], ["1", ""]]);
 
         const html = renderCsvTable(csvContent);
-        assert.match(html, /^<div class="table-wrapper"><button class="table-copy-button"/);
+        assert.match(html, /^<div class="table-wrapper"><div class="table-actions"><button class="table-copy-button"/);
         assert.match(html, /data-copy-table title="Copy table as CSV" aria-label="Copy table as CSV"/);
-        assert.match(html, /<table><thead>/);
+        assert.match(html, /<div class="table-scroll"><table data-csv-model="[^"]+"><thead>/);
         assert.match(html, /<th>Name<\/th>/);
         assert.match(html, /Hello, &quot;world&quot;/);
         assert.match(html, /embedded\r\nnewline/);
@@ -187,8 +187,8 @@ test("preserves Markdown table rendering through the shared table wrapper", asyn
         const route = await fetch(`${server.url}/content/guide.md`);
         const renderMarkdownTable = markdownTableRenderer(runtimeViewerSource(await route.text()));
         const html = renderMarkdownTable("| Name | Value |\n", "| --- | ---: |\n", ["| **Bold** | 42 | surplus |"]);
-        assert.match(html, /^<div class="table-wrapper"><button class="table-copy-button"/);
-        assert.match(html, /<table><thead>/);
+        assert.match(html, /^<div class="table-wrapper"><div class="table-actions"><button class="table-copy-button"/);
+        assert.match(html, /<div class="table-scroll"><table><thead>/);
         assert.match(html, /<th>Name<\/th>/);
         assert.match(html, /<strong>Bold<\/strong>/);
         assert.match(html, /style="text-align:right">42<\/td>/);

@@ -1715,14 +1715,24 @@ function renderHtml(appState, initialView = {}) {
     }
 
     .markdown .table-wrapper {
-      position: relative;
+      width: max-content;
+      max-width: 100%;
+      border: 1px solid var(--theme-border);
+      border-radius: 8px;
+      background: var(--theme-surface);
+    }
+
+    .markdown .table-actions {
+      display: flex;
+      justify-content: flex-end;
+      padding: 6px 6px 0;
+    }
+
+    .markdown .table-scroll {
       width: max-content;
       max-width: 100%;
       overflow-x: auto;
       overflow-y: hidden;
-      border: 1px solid var(--theme-border);
-      border-radius: 8px;
-      background: var(--theme-surface);
     }
 
     .markdown table {
@@ -1734,10 +1744,6 @@ function renderHtml(appState, initialView = {}) {
     }
 
     .markdown .table-copy-button {
-      position: absolute;
-      top: 6px;
-      right: 6px;
-      z-index: 1;
       display: inline-grid;
       width: 28px;
       height: 28px;
@@ -2891,14 +2897,19 @@ function renderHtml(appState, initialView = {}) {
       const cellCount = options.columnCount ?? headerCells.length;
       const alignments = options.alignments || [];
       const renderCell = options.renderCell || inlineMarkdown;
-      const bodyRows = rows
-        .map((row) => normalizeTableCells(row, cellCount))
+      const normalizedHeaderCells = normalizeTableCells(headerCells, cellCount);
+      const normalizedRows = rows.map((row) => normalizeTableCells(row, cellCount));
+      const bodyRows = normalizedRows
         .map((cells) => renderTableRow(cells, "td", alignments, renderCell))
         .join("");
+      const csvModel = options.csvModel
+        ? ' data-csv-model="' + escapeHtml(JSON.stringify([normalizedHeaderCells, ...normalizedRows])) + '"'
+        : "";
 
-      return '<div class="table-wrapper">' + tableCopyButton() + "<table><thead>" +
-        renderTableRow(normalizeTableCells(headerCells, cellCount), "th", alignments, renderCell) +
-        "</thead><tbody>" + bodyRows + "</tbody></table></div>";
+      return '<div class="table-wrapper"><div class="table-actions">' + tableCopyButton() +
+        '</div><div class="table-scroll"><table' + csvModel + "><thead>" +
+        renderTableRow(normalizedHeaderCells, "th", alignments, renderCell) +
+        "</thead><tbody>" + bodyRows + "</tbody></table></div></div>";
     }
 
     function renderMarkdownTable(headerLine, dividerLine, rowLines) {
@@ -3001,7 +3012,7 @@ function renderHtml(appState, initialView = {}) {
         return '<div class="empty">This CSV has no records.</div>';
       }
       const columnCount = Math.max(records[0].length, ...records.slice(1).map((row) => row.length));
-      return renderTable(records[0], records.slice(1), { columnCount, renderCell: escapeHtml });
+      return renderTable(records[0], records.slice(1), { columnCount, renderCell: escapeHtml, csvModel: true });
     }
 
     function escapeCsvField(value) {
@@ -3010,6 +3021,21 @@ function renderHtml(appState, initialView = {}) {
     }
 
     function tableToCsv(table) {
+      const csvModel = table.getAttribute?.("data-csv-model");
+      if (csvModel !== null && csvModel !== undefined) {
+        let rows;
+        try {
+          rows = JSON.parse(csvModel);
+        } catch (error) {
+          throw new Error("Table CSV data is unavailable");
+        }
+        if (!Array.isArray(rows) || !rows.every((row) => Array.isArray(row))) {
+          throw new Error("Table CSV data is unavailable");
+        }
+        return rows
+          .map((row) => row.map((cell) => escapeCsvField(cell)).join(","))
+          .join("\r\n");
+      }
       return Array.from(table.rows)
         .map((row) => Array.from(row.cells)
           .map((cell) => escapeCsvField(cell.innerText ?? cell.textContent ?? ""))
