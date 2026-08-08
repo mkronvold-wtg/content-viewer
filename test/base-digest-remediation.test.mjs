@@ -373,6 +373,40 @@ test('remediation workflow accepts only scheduled trusted execution and never en
   assert.equal(actions.every((step) => /^[^@\s]+@[a-f0-9]{40}$/.test(step.uses)), true);
 });
 
+test('Trivy workflows pin the verified installer and require every scan to succeed', async () => {
+  const root = resolve(import.meta.dirname, '..');
+  const [securitySource, remediationSource] = await Promise.all([
+    readFile(resolve(root, '.github/workflows/security-scan.yml'), 'utf8'),
+    readFile(resolve(root, '.github/workflows/base-digest-remediation.yml'), 'utf8'),
+  ]);
+  const workflows = [
+    ['security', parseWorkflow(securitySource), 2],
+    ['remediation', parseWorkflow(remediationSource), 2],
+  ];
+  const trivyAction = 'aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8';
+
+  for (const [name, workflow, expectedScans] of workflows) {
+    const scans = Object.values(workflow.jobs).flatMap((job) => job.steps ?? [])
+      .filter((step) => step.uses === trivyAction);
+    assert.equal(scans.length, expectedScans, `${name} workflow must retain every Trivy scan`);
+    for (const scan of scans) {
+      assert.equal(scan.with?.version, 'v0.73.0');
+      assert.equal(scan['continue-on-error'] ?? false, false, 'Trivy installation and scanning must fail the job');
+      assert.equal(scan.with?.scanners, 'vuln');
+      assert.equal(scan.with?.['ignore-unfixed'], 'false');
+    }
+  }
+
+  const securityScans = workflows[0][1].jobs.trivy.steps.filter((step) => step.uses === trivyAction);
+  assert.deepEqual(
+    securityScans.map((step) => [step.with?.['scan-type'], step.with?.['scan-ref'] ?? step.with?.['image-ref']]),
+    [
+      ['fs', '.'],
+      ['image', 'content-viewer:security-${{ github.sha }}'],
+    ],
+  );
+});
+
 test('rejects quoted and escaped scan permissions overrides without confusing quoted values', () => {
   for (const quotedKey of ['"permissions"', "'permissions'", '"permiss\\u0069ons"']) {
     const workflow = [

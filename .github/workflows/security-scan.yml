@@ -40,7 +40,7 @@ jobs:
           output: trivy-source.json
           exit-code: '0'
           ignore-unfixed: 'false'
-          version: v0.65.0
+          version: v0.73.0
       - name: Build final runtime image
         run: docker build --tag content-viewer:security-${{ github.sha }} .
       - name: Capture immutable local image content digest
@@ -60,7 +60,7 @@ jobs:
           output: trivy-image.json
           exit-code: '0'
           ignore-unfixed: 'false'
-          version: v0.65.0
+          version: v0.73.0
       - name: Convert evidence to SARIF
         run: |
           trivy convert --format sarif --output trivy-source.sarif trivy-source.json
