@@ -49,25 +49,54 @@ function viewerFunction(viewer, name) {
 }
 
 function evaluateNavigationUrlFunctions(viewer, href) {
-    const source = ["repoPathPrefix", "encodeDocumentPath", "documentNavigationUrl", "updatePresentationUrl"]
+    const source = ["repoPathPrefix", "encodeDocumentPath", "documentUrl", "documentNavigationUrl", "updatePresentationUrl"]
         .map((name) => viewerFunction(viewer, name))
         .join("\n");
     const updates = [];
     const window = {
-        location: { href },
+        location: { href, origin: new URL(href).origin },
         history: {
             replaceState(...args) {
                 updates.push(args);
             },
         },
     };
-    const functions = Function("window", "activeRepo", "activePath", `${source}\nreturn { documentNavigationUrl, updatePresentationUrl };`)(
+    const functions = Function("window", "activeRepo", "activePath", `${source}\nreturn { documentUrl, documentNavigationUrl, updatePresentationUrl };`)(
         window,
         "content",
         "next guide.md",
     );
     return { ...functions, updates, window };
 }
+
+function resolveDocumentLinkPath(viewer, repos, currentDocPath, destination) {
+    const source = ["normalizeRelativePath", "resolveDocumentLinkPath"]
+        .map((name) => viewerFunction(viewer, name))
+        .join("\n");
+    return Function("repos", "activeRepo", "currentDocPath", "destination", `${source}\nreturn resolveDocumentLinkPath(destination);`)(
+        repos,
+        "content",
+        currentDocPath,
+        destination,
+    );
+}
+
+test("maps source-root document links into BASE_DIR display paths", async () => {
+    const serverPath = fileURLToPath(new URL("../server.mjs", import.meta.url));
+    const extensionPath = fileURLToPath(new URL("../extension.mjs", import.meta.url));
+    const [serverSource, extensionSource] = await Promise.all([
+        fs.readFile(serverPath, "utf8"),
+        fs.readFile(extensionPath, "utf8"),
+    ]);
+    const viewer = viewerSource(serverSource);
+    const repos = [{ slug: "content", baseDir: "docs" }];
+
+    assert.equal(viewer, viewerSource(extensionSource), "standalone and canvas viewer sources must stay in parity");
+    assert.equal(resolveDocumentLinkPath(viewer, repos, "guide.md", "/docs/other.md"), "other.md");
+    assert.equal(resolveDocumentLinkPath(viewer, repos, "nested/guide.md", "/docs/nested/other.md"), "nested/other.md");
+    assert.equal(resolveDocumentLinkPath(viewer, repos, "guide.md", "/outside/other.md"), null);
+    assert.equal(resolveDocumentLinkPath(viewer, repos, "guide.md", "/docs/../outside/other.md"), null);
+});
 
 before(async () => {
     await fs.mkdir(testRoot, { recursive: true });
@@ -119,10 +148,14 @@ test("persists presentation and search browser state in mirrored viewer sources"
     const searchIndex = viewer.indexOf("await search()", restoreIndex);
     assert.ok(openDocumentIndex < restoreIndex && restoreIndex < searchIndex, "restored search must use the initialized route and search pipeline");
 
-    const { documentNavigationUrl, updatePresentationUrl, updates, window } = evaluateNavigationUrlFunctions(
+    const { documentUrl, documentNavigationUrl, updatePresentationUrl, updates, window } = evaluateNavigationUrlFunctions(
         viewer,
         "https://viewer.example/content/old-guide.md?present=1&theme=night&filter=owned#section-two",
     );
+    const shareUrl = documentUrl("nested/next guide.md");
+    assert.equal(shareUrl, "https://viewer.example/content/nested/next%20guide.md");
+    assert.doesNotMatch(shareUrl, /data/);
+    assert.match(viewer, /const link = documentUrl\(activePath\);/);
     const nextUrl = documentNavigationUrl("next guide.md");
     assert.equal(nextUrl.pathname, "/content/next%20guide.md");
     assert.equal(nextUrl.search, "?present=1&theme=night&filter=owned");

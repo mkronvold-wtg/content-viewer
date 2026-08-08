@@ -139,22 +139,65 @@ function normalizeBaseDir(value) {
         .trim();
 }
 
-function stripBaseDir(relativePath, baseDir) {
-    const normalized = String(relativePath ?? "").replaceAll("\\", "/").replace(/^\/+/, "");
-    const normalizedBase = normalizeBaseDir(baseDir);
-    if (!normalizedBase) {
-        return normalized;
-    }
-    if (normalized === normalizedBase) {
-        return "";
-    }
-    return normalized.startsWith(`${normalizedBase}/`) ? normalized.slice(normalizedBase.length + 1) : normalized;
+function invalidBaseDirError(repo, reason) {
+    return new Error(`Invalid BASE_DIR for content repo "${repo.slug}": ${reason}`);
 }
 
-function addBaseDir(displayPath, baseDir) {
-    const normalized = String(displayPath ?? "").replaceAll("\\", "/").replace(/^\/+/, "");
-    const normalizedBase = normalizeBaseDir(baseDir);
-    return normalizedBase ? `${normalizedBase}/${normalized}`.replace(/\/+$/, "") : normalized;
+function normalizeDisplayPath(value) {
+    const normalized = String(value ?? "").replaceAll("\\", "/");
+    if (!normalized || normalized.startsWith("/") || normalized.split("/").some((segment) => !segment || segment === "." || segment === "..")) {
+        return null;
+    }
+
+    return normalized;
+}
+
+async function resolveIndexRoot(repo) {
+    const repoPath = path.resolve(repo.path);
+    const rootStat = await fs.stat(repoPath);
+    if (!rootStat.isDirectory()) {
+        throw new Error(`${repoPath} is not a directory`);
+    }
+
+    const repoRoot = await fs.realpath(repoPath);
+    const baseDir = normalizeBaseDir(repo.baseDir);
+    if (!baseDir) {
+        return { repoRoot, indexRoot: repoRoot };
+    }
+
+    const segments = baseDir.split("/");
+    if (
+        path.isAbsolute(baseDir) ||
+        path.win32.isAbsolute(baseDir) ||
+        segments.some((segment) => !segment || segment === "." || segment === ".." || /^[A-Za-z]:$/.test(segment))
+    ) {
+        throw invalidBaseDirError(repo, `"${baseDir}" must be a repository-relative directory without "." or ".." path segments`);
+    }
+
+    const configuredRoot = path.resolve(repoRoot, ...segments);
+    if (!isWithinDirectory(repoRoot, configuredRoot) || pathsEqual(repoRoot, configuredRoot)) {
+        throw invalidBaseDirError(repo, `"${baseDir}" must resolve strictly inside ${repoPath}`);
+    }
+
+    let indexRoot;
+    try {
+        indexRoot = await fs.realpath(configuredRoot);
+    } catch (error) {
+        if (error?.code === "ENOENT") {
+            throw invalidBaseDirError(repo, `"${baseDir}" does not exist`);
+        }
+        throw invalidBaseDirError(repo, `"${baseDir}" cannot be resolved`);
+    }
+
+    const indexStat = await fs.stat(indexRoot);
+    if (!indexStat.isDirectory()) {
+        throw invalidBaseDirError(repo, `"${baseDir}" is not a directory`);
+    }
+    if (!isWithinDirectory(repoRoot, indexRoot) || pathsEqual(repoRoot, indexRoot)) {
+        throw invalidBaseDirError(repo, `"${baseDir}" resolves outside the repository`);
+    }
+
+    return { repoRoot, indexRoot };
 }
 
 function repoTitleName(repo) {
@@ -534,10 +577,7 @@ function buildFacetIndex(docs, fieldName) {
 
 async function buildIndex(repo) {
     const repoPath = repo.path;
-    const rootStat = await fs.stat(repoPath);
-    if (!rootStat.isDirectory()) {
-        throw new Error(`${repoPath} is not a directory`);
-    }
+    const { repoRoot, indexRoot } = await resolveIndexRoot(repo);
 
     const docs = [];
 
@@ -563,30 +603,32 @@ async function buildIndex(repo) {
                 }
 
                 const content = await fs.readFile(fullPath, "utf8");
-                const relativePath = toPosixPath(path.relative(repoPath, fullPath));
-                const displayPath = stripBaseDir(relativePath, repo.baseDir);
+                const sourcePath = toPosixPath(path.relative(repoRoot, fullPath));
+                const displayPath = toPosixPath(path.relative(indexRoot, fullPath));
                 const frontmatter = extractFrontmatter(content);
                 const title = extractTitle(content, fullPath);
                 docs.push({
                     path: displayPath,
-                    sourcePath: relativePath,
+                    sourcePath,
                     title,
                     layers: frontmatter.layers ?? [],
                     tags: frontmatter.tags ?? [],
                     size: stat.size,
                     modified: stat.mtime.toISOString(),
                     content,
-                    searchable: `${title}\n${displayPath}\n${relativePath}\n${(frontmatter.layers ?? []).join(" ")}\n${(frontmatter.tags ?? []).join(" ")}\n${content}`.toLowerCase(),
+                    searchable: `${title}\n${displayPath}\n${(frontmatter.layers ?? []).join(" ")}\n${(frontmatter.tags ?? []).join(" ")}\n${content}`.toLowerCase(),
                 });
             }),
         );
     }
 
-    await walk(repoPath);
+    await walk(indexRoot);
     docs.sort((a, b) => a.path.localeCompare(b.path));
     return {
         repo: publicRepoConfig(repo),
         repoPath,
+        repoRoot,
+        indexRoot,
         indexedAt: new Date().toISOString(),
         facets: {
             layers: buildFacetIndex(docs, "layers"),
@@ -678,9 +720,9 @@ function searchIndex(index, query, limit = 50) {
     }));
 }
 
-function findDoc(index, relativePath) {
-    const normalizedPath = String(relativePath ?? "").replaceAll("\\", "/");
-    return index.docs.find((doc) => doc.path === normalizedPath || doc.sourcePath === normalizedPath);
+function findDoc(index, displayPath) {
+    const normalizedPath = normalizeDisplayPath(displayPath);
+    return normalizedPath ? index.docs.find((doc) => doc.path === normalizedPath) : undefined;
 }
 
 function isExternalAsset(src) {
@@ -699,22 +741,38 @@ function stripAssetDecorations(src) {
 
 function normalizeRepoRelative(value) {
     const normalized = path.normalize(String(value ?? "").replaceAll("\\", "/").replace(/^\/+/, ""));
-    if (!normalized || normalized === "." || normalized.startsWith("..") || path.isAbsolute(normalized)) {
+    if (!normalized || normalized === "." || isParentTraversal(normalized) || path.isAbsolute(normalized)) {
         return null;
     }
 
     return normalized;
 }
 
+function isParentTraversal(relativePath) {
+    return relativePath === ".." || relativePath.startsWith(`..${path.sep}`);
+}
+
 function isWithinDirectory(parent, child) {
     const relative = path.relative(parent, child);
-    return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+    return relative === "" || (!isParentTraversal(relative) && !path.isAbsolute(relative));
 }
 
 async function fileExists(filePath) {
     try {
         const stat = await fs.stat(filePath);
         return stat.isFile();
+    } catch {
+        return false;
+    }
+}
+
+async function fileExistsWithinDirectory(directory, filePath) {
+    if (!isWithinDirectory(directory, filePath) || !(await fileExists(filePath))) {
+        return false;
+    }
+
+    try {
+        return isWithinDirectory(directory, await fs.realpath(filePath));
     } catch {
         return false;
     }
@@ -748,15 +806,16 @@ async function resolveAssetPath(state, index, docRelativePath, assetSrc) {
     }
 
     const doc = findDoc(index, docRelativePath);
-    const docRelative = normalizeRepoRelative(doc?.sourcePath ?? addBaseDir(docRelativePath, state.repo.baseDir));
+    const docRelative = normalizeRepoRelative(doc?.sourcePath);
     const assetRelative = stripAssetDecorations(assetSrc);
     if (!docRelative || !assetRelative) {
         return null;
     }
 
-    const repoPath = state.repo.path;
+    const repoPath = index.repoRoot ?? state.repo.path;
+    const indexRoot = index.indexRoot ?? repoPath;
     const docPath = path.resolve(repoPath, docRelative);
-    if (!isWithinDirectory(repoPath, docPath)) {
+    if (!isWithinDirectory(indexRoot, docPath)) {
         return null;
     }
 
@@ -769,26 +828,23 @@ async function resolveAssetPath(state, index, docRelativePath, assetSrc) {
         const repoRelative = normalizeRepoRelative(normalizedAsset);
         if (repoRelative) {
             candidates.push(path.resolve(repoPath, repoRelative));
-            candidates.push(path.resolve(repoPath, addBaseDir(repoRelative, state.repo.baseDir)));
+            candidates.push(path.resolve(indexRoot, repoRelative));
         }
     } else {
         candidates.push(path.resolve(docDirectory, normalizedAsset));
         candidates.push(path.resolve(docDirectory, basename));
         candidates.push(path.resolve(docDirectory, "attachments", basename));
-        candidates.push(path.resolve(repoPath, "attachments", basename));
-        if (state.repo.baseDir) {
-            candidates.push(path.resolve(repoPath, state.repo.baseDir, "attachments", basename));
-        }
+        candidates.push(path.resolve(indexRoot, "attachments", basename));
     }
 
     for (const candidate of candidates) {
-        if (isWithinDirectory(repoPath, candidate) && (await fileExists(candidate))) {
+        if (await fileExistsWithinDirectory(indexRoot, candidate)) {
             return candidate;
         }
     }
 
-    const found = await findAssetByBasename(repoPath, basename);
-    return found && isWithinDirectory(repoPath, found) ? found : null;
+    const found = await findAssetByBasename(indexRoot, basename);
+    return found && (await fileExistsWithinDirectory(indexRoot, found)) ? found : null;
 }
 
 function sendJson(res, status, value) {
@@ -862,14 +918,24 @@ function parseRepoRoute(appState, pathname) {
         return null;
     }
 
-    const repoSlug = decodeURIComponent(segments[0]);
+    let repoSlug;
+    let docPath;
+    try {
+        repoSlug = decodeURIComponent(segments[0]);
+        docPath = segments.slice(1).map((segment) => decodeURIComponent(segment)).join("/");
+    } catch {
+        return null;
+    }
     if (!appState.repoStates.has(repoSlug)) {
+        return null;
+    }
+    if (docPath && !normalizeDisplayPath(docPath)) {
         return null;
     }
 
     return {
         repoSlug,
-        docPath: segments.slice(1).map((segment) => decodeURIComponent(segment)).join("/"),
+        docPath,
     };
 }
 
@@ -2475,12 +2541,36 @@ function renderHtml(appState, initialView = {}) {
           continue;
         }
         if (part === "..") {
+          if (!parts.length) {
+            return null;
+          }
           parts.pop();
           continue;
         }
         parts.push(part);
       }
       return parts.join("/");
+    }
+
+    function resolveDocumentLinkPath(destination) {
+      if (!destination.startsWith("/")) {
+        return normalizeRelativePath(currentDocPath, destination);
+      }
+
+      const sourcePath = normalizeRelativePath("", destination);
+      if (!sourcePath) {
+        return null;
+      }
+
+      const baseSegments = String(repos.find((repo) => repo.slug === activeRepo)?.baseDir || "")
+        .split("/")
+        .filter(Boolean);
+      const sourceSegments = sourcePath.split("/");
+      if (baseSegments.some((segment, index) => sourceSegments[index] !== segment)) {
+        return null;
+      }
+
+      return sourceSegments.slice(baseSegments.length).join("/") || null;
     }
 
     function linkHtml(label, destination) {
@@ -2498,8 +2588,11 @@ function renderHtml(appState, initialView = {}) {
       const hashIndex = parsedDestination.indexOf("#");
       const pathPart = hashIndex >= 0 ? parsedDestination.slice(0, hashIndex) : parsedDestination;
       const hashPart = hashIndex >= 0 ? parsedDestination.slice(hashIndex + 1) : "";
-      const targetPath = pathPart ? normalizeRelativePath(currentDocPath, pathPart) : currentDocPath;
+      const targetPath = pathPart ? resolveDocumentLinkPath(pathPart) : currentDocPath;
       if (/\\.md$/i.test(pathPart) || (!pathPart && hashPart)) {
+        if (!targetPath) {
+          return renderedLabel;
+        }
         return '<a href="' + escapeHtml(documentUrl(targetPath)) + '" data-doc-link="' + escapeHtml(targetPath) + '" data-doc-hash="' + escapeHtml(hashPart) + '">' + renderedLabel + "</a>";
       }
 
@@ -3752,7 +3845,7 @@ async function handleRequest(appState, req, res) {
 
 async function startServer(instanceId, repoPath) {
     const repos = repoPath && !pathsEqual(repoPath, CONFIGURED_REPOS[0].path)
-        ? [{ ...CONFIGURED_REPOS[0], slug: "content", label: "content", path: repoPath, url: await getGitRemoteUrl(repoPath), baseDir: "" }]
+        ? [{ ...CONFIGURED_REPOS[0], slug: "content", label: "content", path: repoPath, url: await getGitRemoteUrl(repoPath), baseDir: CONFIGURED_REPOS[0].baseDir }]
         : CONFIGURED_REPOS;
     const state = createAppState(instanceId, repos);
     const server = createServer((req, res) => {
