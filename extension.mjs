@@ -1235,6 +1235,12 @@ function renderHtml(appState, initialView = {}) {
       border-bottom: 1px solid var(--theme-border-muted);
     }
 
+    .nav-rail-actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
     .nav-rail-title,
     .tag-rail-title {
       margin: 0;
@@ -1247,6 +1253,7 @@ function renderHtml(appState, initialView = {}) {
     }
 
     .nav-pin,
+    .nav-preview-toggle,
     .tag-pin {
       display: inline-flex;
       align-items: center;
@@ -1262,6 +1269,7 @@ function renderHtml(appState, initialView = {}) {
     }
 
     .nav-pin svg,
+    .nav-preview-toggle svg,
     .tag-pin svg {
       width: 14px;
       height: 14px;
@@ -1269,6 +1277,8 @@ function renderHtml(appState, initialView = {}) {
 
     .nav-pin:hover,
     .nav-pin.is-active,
+    .nav-preview-toggle:hover,
+    .nav-preview-toggle.is-active,
     .tag-pin:hover,
     .tag-pin.is-active {
       color: var(--theme-active-border);
@@ -1542,6 +1552,20 @@ function renderHtml(appState, initialView = {}) {
       display: block;
       font-weight: var(--font-weight-semibold, 600);
       margin-bottom: 2px;
+    }
+
+    .results[data-preview-mode="title-only"] .result {
+      padding-top: 7px;
+      padding-bottom: 7px;
+    }
+
+    .results[data-preview-mode="title-only"] .result-title {
+      margin-bottom: 0;
+    }
+
+    .results[data-preview-mode="title-only"] .result-path,
+    .results[data-preview-mode="title-only"] .snippet {
+      display: none;
     }
 
     .results .result-path {
@@ -1914,11 +1938,18 @@ function renderHtml(appState, initialView = {}) {
       <div class="nav-rail-inner">
         <div class="nav-rail-header">
           <h2 class="nav-rail-title">Documents</h2>
-          <button id="nav-pin" class="nav-pin is-active" type="button" aria-label="Unpin navigation sidebar" aria-pressed="true" title="Unpin navigation sidebar">
-            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-              <path d="M5.4 1.5h5.2v1.7L9.7 5.5v2.8l1.8 1v1.2H8.6v4H7.4v-4H4.5V9.3l1.8-1V5.5L5.4 3.2V1.5Z" fill="currentColor"></path>
-            </svg>
-          </button>
+          <div class="nav-rail-actions">
+            <button id="nav-preview-toggle" class="nav-preview-toggle" type="button" aria-label="Show title-only navigation results" aria-pressed="false" title="Show title-only navigation results">
+              <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                <path d="M2 3.5h12v1H2v-1Zm0 4h12v1H2v-1Zm0 4h12v1H2v-1Z" fill="currentColor"></path>
+              </svg>
+            </button>
+            <button id="nav-pin" class="nav-pin is-active" type="button" aria-label="Unpin navigation sidebar" aria-pressed="true" title="Unpin navigation sidebar">
+              <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                <path d="M5.4 1.5h5.2v1.7L9.7 5.5v2.8l1.8 1v1.2H8.6v4H7.4v-4H4.5V9.3l1.8-1V5.5L5.4 3.2V1.5Z" fill="currentColor"></path>
+              </svg>
+            </button>
+          </div>
         </div>
         <section id="results" class="results" aria-label="Search results"></section>
         <button id="nav-resize-handle" class="nav-resize-handle" type="button" aria-label="Resize document navigation sidebar" title="Drag to resize document navigation sidebar"></button>
@@ -1965,6 +1996,7 @@ function renderHtml(appState, initialView = {}) {
     const searchInput = document.getElementById("search");
     const refreshButton = document.getElementById("refresh");
     const navRail = document.getElementById("nav-rail");
+    const navPreviewToggle = document.getElementById("nav-preview-toggle");
     const navPin = document.getElementById("nav-pin");
     const navFlyoutTrigger = document.getElementById("nav-flyout-trigger");
     const navResizeHandle = document.getElementById("nav-resize-handle");
@@ -2011,6 +2043,7 @@ function renderHtml(appState, initialView = {}) {
     let mermaidModulePromise = null;
     const themeStorageKey = "kpe-doc-dashboard-theme";
     const navPinnedStorageKey = "content-viewer-nav-pinned";
+    const navPreviewTitleOnlyStorageKey = "content-viewer-nav-title-only";
     const navWidthStorageKey = "content-viewer-nav-width";
     const tagPinnedStorageKey = "content-viewer-tag-pinned";
     const searchSessionStorageKey = "content-viewer-search";
@@ -2376,6 +2409,16 @@ function renderHtml(appState, initialView = {}) {
       }
       tagRail.classList.toggle("is-open", isOpen);
       tagFlyoutTrigger.setAttribute("aria-expanded", String(isOpen || tagRail.classList.contains("is-pinned")));
+    }
+
+    function setNavResultPreviewMode(isTitleOnly) {
+      resultsElement.dataset.previewMode = isTitleOnly ? "title-only" : "preview";
+      navPreviewToggle.classList.toggle("is-active", isTitleOnly);
+      navPreviewToggle.setAttribute("aria-pressed", String(isTitleOnly));
+      const label = isTitleOnly ? "Show navigation previews" : "Show title-only navigation results";
+      navPreviewToggle.setAttribute("aria-label", label);
+      navPreviewToggle.title = label;
+      storeFlag(navPreviewTitleOnlyStorageKey, isTitleOnly);
     }
 
     function setNavPinned(isPinned) {
@@ -3520,6 +3563,9 @@ function renderHtml(appState, initialView = {}) {
     });
     navRail.addEventListener("focusout", handleNavRailBlur);
     navFlyoutTrigger.addEventListener("click", () => setNavRailOpen(true));
+    navPreviewToggle.addEventListener("click", () => {
+      setNavResultPreviewMode(resultsElement.dataset.previewMode !== "title-only");
+    });
     navPin.addEventListener("click", () => {
       setNavPinned(!navRail.classList.contains("is-pinned"));
     });
@@ -3657,6 +3703,7 @@ function renderHtml(appState, initialView = {}) {
       populateRepoSelect();
       populateThemeSelect();
       applyNavWidth(getStoredNavWidth());
+      setNavResultPreviewMode(getStoredFlag(navPreviewTitleOnlyStorageKey, false));
       setNavPinned(getStoredFlag(navPinnedStorageKey, true));
       setTagPinned(getStoredFlag(tagPinnedStorageKey, false));
       applyTheme(getInitialTheme());
