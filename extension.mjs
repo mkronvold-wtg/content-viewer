@@ -1153,7 +1153,8 @@ function renderHtml(appState, initialView = {}) {
     }
 
     body.presenting .markdown {
-      max-width: 1100px;
+      width: 90%;
+      max-width: none;
       margin: 0 auto;
     }
 
@@ -1633,7 +1634,9 @@ function renderHtml(appState, initialView = {}) {
     }
 
     .markdown {
-      max-width: 900px;
+      width: 90%;
+      max-width: none;
+      margin: 0 auto;
     }
 
     .markdown h1,
@@ -1712,18 +1715,59 @@ function renderHtml(appState, initialView = {}) {
     }
 
     .markdown .table-wrapper {
+      width: max-content;
       max-width: 100%;
-      overflow: visible;
       border: 1px solid var(--theme-border);
       border-radius: 8px;
       background: var(--theme-surface);
     }
 
+    .markdown .table-actions {
+      display: flex;
+      justify-content: flex-end;
+      padding: 6px 6px 0;
+    }
+
+    .markdown .table-scroll {
+      width: max-content;
+      max-width: 100%;
+      overflow-x: auto;
+      overflow-y: hidden;
+    }
+
     .markdown table {
-      width: 100%;
-      table-layout: fixed;
+      width: max-content;
+      min-width: 100%;
+      table-layout: auto;
       border-collapse: collapse;
       font-size: 13px;
+    }
+
+    .markdown .table-copy-button {
+      display: inline-grid;
+      width: 28px;
+      height: 28px;
+      padding: 5px;
+      place-items: center;
+      border: 1px solid var(--theme-border);
+      border-radius: 5px;
+      background: var(--theme-surface);
+      color: var(--theme-text);
+      cursor: pointer;
+    }
+
+    .markdown .table-copy-button:hover {
+      background: var(--theme-button-bg);
+    }
+
+    .markdown .table-copy-button:focus-visible {
+      outline: 2px solid var(--theme-active-border);
+      outline-offset: 2px;
+    }
+
+    .markdown .table-copy-button svg {
+      width: 16px;
+      height: 16px;
     }
 
     .markdown th,
@@ -1907,6 +1951,11 @@ function renderHtml(appState, initialView = {}) {
 
       .document {
         max-height: none;
+      }
+
+      .markdown,
+      body.presenting .markdown {
+        width: 100%;
       }
     }
   </style>
@@ -2839,18 +2888,28 @@ function renderHtml(appState, initialView = {}) {
       }).join("") + "</tr>";
     }
 
+    function tableCopyButton() {
+      return '<button class="table-copy-button" type="button" data-copy-table title="Copy table as CSV" aria-label="Copy table as CSV">' +
+        '<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M5 1.5h7.5v9H11v-7.5H5v-1.5Zm-2 3H9v10H3v-10Zm1.5 1.5v7h3v-7h-3Z" fill="currentColor"></path></svg></button>';
+    }
+
     function renderTable(headerCells, rows, options = {}) {
       const cellCount = options.columnCount ?? headerCells.length;
       const alignments = options.alignments || [];
       const renderCell = options.renderCell || inlineMarkdown;
-      const bodyRows = rows
-        .map((row) => normalizeTableCells(row, cellCount))
+      const normalizedHeaderCells = normalizeTableCells(headerCells, cellCount);
+      const normalizedRows = rows.map((row) => normalizeTableCells(row, cellCount));
+      const bodyRows = normalizedRows
         .map((cells) => renderTableRow(cells, "td", alignments, renderCell))
         .join("");
+      const csvModel = options.csvModel
+        ? ' data-csv-model="' + escapeHtml(JSON.stringify([normalizedHeaderCells, ...normalizedRows])) + '"'
+        : "";
 
-      return '<div class="table-wrapper"><table><thead>' +
-        renderTableRow(normalizeTableCells(headerCells, cellCount), "th", alignments, renderCell) +
-        "</thead><tbody>" + bodyRows + "</tbody></table></div>";
+      return '<div class="table-wrapper"><div class="table-actions">' + tableCopyButton() +
+        '</div><div class="table-scroll"><table' + csvModel + "><thead>" +
+        renderTableRow(normalizedHeaderCells, "th", alignments, renderCell) +
+        "</thead><tbody>" + bodyRows + "</tbody></table></div></div>";
     }
 
     function renderMarkdownTable(headerLine, dividerLine, rowLines) {
@@ -2953,7 +3012,35 @@ function renderHtml(appState, initialView = {}) {
         return '<div class="empty">This CSV has no records.</div>';
       }
       const columnCount = Math.max(records[0].length, ...records.slice(1).map((row) => row.length));
-      return renderTable(records[0], records.slice(1), { columnCount, renderCell: escapeHtml });
+      return renderTable(records[0], records.slice(1), { columnCount, renderCell: escapeHtml, csvModel: true });
+    }
+
+    function escapeCsvField(value) {
+      const text = String(value ?? "");
+      return /[",\r\n]/.test(text) ? '"' + text.replaceAll('"', '""') + '"' : text;
+    }
+
+    function tableToCsv(table) {
+      const csvModel = table.getAttribute?.("data-csv-model");
+      if (csvModel !== null && csvModel !== undefined) {
+        let rows;
+        try {
+          rows = JSON.parse(csvModel);
+        } catch (error) {
+          throw new Error("Table CSV data is unavailable");
+        }
+        if (!Array.isArray(rows) || !rows.every((row) => Array.isArray(row))) {
+          throw new Error("Table CSV data is unavailable");
+        }
+        return rows
+          .map((row) => row.map((cell) => escapeCsvField(cell)).join(","))
+          .join("\r\n");
+      }
+      return Array.from(table.rows)
+        .map((row) => Array.from(row.cells)
+          .map((cell) => escapeCsvField(cell.innerText ?? cell.textContent ?? ""))
+          .join(","))
+        .join("\r\n");
     }
 
     function indentWidth(value) {
@@ -3592,6 +3679,42 @@ function renderHtml(appState, initialView = {}) {
       repoSelect.hidden = repos.length <= 1;
     }
 
+    async function writeClipboardText(text) {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.style.position = "fixed";
+      textarea.style.left = "-9999px";
+      document.body.appendChild(textarea);
+      try {
+        textarea.select();
+        if (!document.execCommand("copy")) {
+          throw new Error("Clipboard copy was denied");
+        }
+      } finally {
+        textarea.remove();
+      }
+    }
+
+    async function copyTableAsCsv(tableWrapper) {
+      const table = tableWrapper?.querySelector("table");
+      if (!table) {
+        statusElement.textContent = "Copy failed. The table is unavailable.";
+        return;
+      }
+
+      try {
+        await writeClipboardText(tableToCsv(table));
+        statusElement.textContent = "Copied table as CSV.";
+      } catch (error) {
+        statusElement.textContent = "Copy failed. Table CSV could not be copied.";
+      }
+    }
+
     async function copyShareLink() {
       if (!activePath) {
         statusElement.textContent = "Open a document before sharing a direct link.";
@@ -3600,18 +3723,7 @@ function renderHtml(appState, initialView = {}) {
 
       const link = documentUrl(activePath);
       try {
-        if (navigator.clipboard?.writeText) {
-          await navigator.clipboard.writeText(link);
-        } else {
-          const textarea = document.createElement("textarea");
-          textarea.value = link;
-          textarea.style.position = "fixed";
-          textarea.style.left = "-9999px";
-          document.body.appendChild(textarea);
-          textarea.select();
-          document.execCommand("copy");
-          textarea.remove();
-        }
+        await writeClipboardText(link);
         statusElement.textContent = "Copied direct document link: " + link;
       } catch (error) {
         statusElement.textContent = "Copy failed. Direct link: " + link;
@@ -3626,18 +3738,7 @@ function renderHtml(appState, initialView = {}) {
       }
 
       try {
-        if (navigator.clipboard?.writeText) {
-          await navigator.clipboard.writeText(link);
-        } else {
-          const textarea = document.createElement("textarea");
-          textarea.value = link;
-          textarea.style.position = "fixed";
-          textarea.style.left = "-9999px";
-          document.body.appendChild(textarea);
-          textarea.select();
-          document.execCommand("copy");
-          textarea.remove();
-        }
+        await writeClipboardText(link);
         statusElement.textContent = "Copied source Git URL: " + link;
       } catch (error) {
         statusElement.textContent = "Copy failed. Source Git URL: " + link;
@@ -3741,17 +3842,28 @@ function renderHtml(appState, initialView = {}) {
     sourceButton.addEventListener("click", copySourceUrl);
     shareButton.addEventListener("click", copyShareLink);
 
-    docContent.addEventListener("click", async (event) => {
-      const link = event.target.closest("a[data-doc-link]");
+    async function handleDocumentContentClick(event, container, copyTable, openDocumentHandler) {
+      const copyButton = event.target.closest?.("[data-copy-table]");
+      if (copyButton && container.contains(copyButton)) {
+        event.preventDefault();
+        await copyTable(copyButton.closest(".table-wrapper"));
+        return;
+      }
+
+      const link = event.target.closest?.("a[data-doc-link]");
       if (!link) {
         return;
       }
       event.preventDefault();
-      await openDocument(link.getAttribute("data-doc-link"));
+      await openDocumentHandler(link.getAttribute("data-doc-link"));
       const hash = link.getAttribute("data-doc-hash");
       if (hash) {
         document.getElementById(hash)?.scrollIntoView({ block: "start" });
       }
+    }
+
+    docContent.addEventListener("click", async (event) => {
+      await handleDocumentContentClick(event, docContent, copyTableAsCsv, openDocument);
     });
 
     themeSelect.addEventListener("change", async () => {

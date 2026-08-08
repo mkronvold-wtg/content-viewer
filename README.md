@@ -18,6 +18,7 @@ This repository includes:
 - Local image/SVG asset resolution.
 - Mermaid rendering.
 - Tables, task lists, nested lists, blockquotes, code blocks, admonitions, links, bold, italic, and strikethrough.
+- Reader content uses 90% of the available pane (full width on narrow screens); intrinsic-width Markdown and CSV tables scroll only when needed and can be copied as CSV.
 - Presentation mode with heading or `---` pagination; direct document URLs with `?present=1` reopen in presentation mode.
 - Per-tab search text restoration that reruns the normal search pipeline after a browser reload.
 - Pin/unpin document navigation and tag sidebars with browser-stored flyout behavior and adjustable document navigation width.
