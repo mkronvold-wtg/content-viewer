@@ -31,8 +31,8 @@ jobs:
         run: npm ci
       - name: Build and syntax-check
         run: npm run build
-      - name: Run Node contracts
-        run: npm run test:contracts
+      - name: Run deterministic Node test suite
+        run: npm test
       - name: Build final image
         run: docker build --tag content-viewer:ci-${{ github.sha }} .
       - name: Smoke-test final image

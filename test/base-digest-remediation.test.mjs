@@ -130,6 +130,29 @@ function assertScanHasNoPermissionsOverride(workflow) {
   return scan;
 }
 
+test('validation workflow runs the complete Node suite before the separate image smoke test', async () => {
+  const root = resolve(import.meta.dirname, '..');
+  const [workflowSource, packageSource] = await Promise.all([
+    readFile(resolve(root, '.github/workflows/validate.yml'), 'utf8'),
+    readFile(resolve(root, 'package.json'), 'utf8'),
+  ]);
+  const workflow = parseWorkflow(workflowSource);
+  const packageJson = JSON.parse(packageSource);
+  const steps = workflow.jobs?.validate?.steps;
+
+  assert.ok(Array.isArray(steps), 'Validation workflow must define validate job steps');
+  assert.equal(
+    steps.find((step) => step.name === 'Run deterministic Node test suite')?.run,
+    'npm test',
+  );
+  assert.match(packageJson.scripts?.test ?? '', /\btest:browser-state\b/);
+  assert.match(packageJson.scripts?.test ?? '', /\btest:base-directory-root\b/);
+  assert.equal(
+    steps.find((step) => step.name === 'Smoke-test final image')?.run,
+    'npm run test:container',
+  );
+});
+
 test('parses the actual pinned runtime tag and changes only its digest', () => {
   const parsed = parsePinnedNodeDockerfile(dockerfile);
   assert.equal(parsed.tag, '26-bookworm-slim');
