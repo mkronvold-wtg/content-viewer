@@ -466,16 +466,8 @@ function extractTitle(content, filePath) {
     return path.basename(filePath, path.extname(filePath));
 }
 
-function documentFormat(filePath) {
-    const extension = path.extname(filePath).toLowerCase();
-    if (extension === ".csv") {
-        return "csv";
-    }
-    return extension === ".md" ? "markdown" : null;
-}
-
-function makeSnippet(content, tokens, stripMarkdownFrontmatter = true) {
-    const normalized = (stripMarkdownFrontmatter ? stripFrontmatter(content) : String(content ?? "")).replace(/\s+/g, " ").trim();
+function makeSnippet(content, tokens) {
+    const normalized = stripFrontmatter(content).replace(/\s+/g, " ").trim();
     if (!normalized) {
         return "";
     }
@@ -600,8 +592,7 @@ async function buildIndex(repo) {
                     return;
                 }
 
-                const format = documentFormat(entry.name);
-                if (!entry.isFile() || !format) {
+                if (!entry.isFile() || !entry.name.toLowerCase().endsWith(".md")) {
                     return;
                 }
 
@@ -614,12 +605,11 @@ async function buildIndex(repo) {
                 const content = await fs.readFile(fullPath, "utf8");
                 const sourcePath = toPosixPath(path.relative(repoRoot, fullPath));
                 const displayPath = toPosixPath(path.relative(indexRoot, fullPath));
-                const frontmatter = format === "markdown" ? extractFrontmatter(content) : {};
-                const title = format === "markdown" ? extractTitle(content, fullPath) : path.basename(fullPath, path.extname(fullPath));
+                const frontmatter = extractFrontmatter(content);
+                const title = extractTitle(content, fullPath);
                 docs.push({
                     path: displayPath,
                     sourcePath,
-                    format,
                     title,
                     layers: frontmatter.layers ?? [],
                     tags: frontmatter.tags ?? [],
@@ -720,14 +710,13 @@ function searchIndex(index, query, limit = 50) {
 
     return scored.map(({ doc, score }) => ({
         path: doc.path,
-        format: doc.format,
         title: doc.title,
         layers: doc.layers,
         tags: doc.tags,
         modified: doc.modified,
         size: doc.size,
         score,
-        snippet: makeSnippet(doc.content, tokens, doc.format === "markdown"),
+        snippet: makeSnippet(doc.content, tokens),
     }));
 }
 
@@ -1153,8 +1142,7 @@ function renderHtml(appState, initialView = {}) {
     }
 
     body.presenting .markdown {
-      width: 90%;
-      max-width: none;
+      max-width: 1100px;
       margin: 0 auto;
     }
 
@@ -1247,12 +1235,6 @@ function renderHtml(appState, initialView = {}) {
       border-bottom: 1px solid var(--theme-border-muted);
     }
 
-    .nav-rail-actions {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-    }
-
     .nav-rail-title,
     .tag-rail-title {
       margin: 0;
@@ -1265,7 +1247,6 @@ function renderHtml(appState, initialView = {}) {
     }
 
     .nav-pin,
-    .nav-preview-toggle,
     .tag-pin {
       display: inline-flex;
       align-items: center;
@@ -1281,7 +1262,6 @@ function renderHtml(appState, initialView = {}) {
     }
 
     .nav-pin svg,
-    .nav-preview-toggle svg,
     .tag-pin svg {
       width: 14px;
       height: 14px;
@@ -1289,8 +1269,6 @@ function renderHtml(appState, initialView = {}) {
 
     .nav-pin:hover,
     .nav-pin.is-active,
-    .nav-preview-toggle:hover,
-    .nav-preview-toggle.is-active,
     .tag-pin:hover,
     .tag-pin.is-active {
       color: var(--theme-active-border);
@@ -1566,20 +1544,6 @@ function renderHtml(appState, initialView = {}) {
       margin-bottom: 2px;
     }
 
-    .results[data-preview-mode="title-only"] .result {
-      padding-top: 7px;
-      padding-bottom: 7px;
-    }
-
-    .results[data-preview-mode="title-only"] .result-title {
-      margin-bottom: 0;
-    }
-
-    .results[data-preview-mode="title-only"] .result-path,
-    .results[data-preview-mode="title-only"] .snippet {
-      display: none;
-    }
-
     .results .result-path {
       color: var(--theme-chrome-muted-text);
     }
@@ -1634,9 +1598,7 @@ function renderHtml(appState, initialView = {}) {
     }
 
     .markdown {
-      width: 90%;
-      max-width: none;
-      margin: 0 auto;
+      max-width: 900px;
     }
 
     .markdown h1,
@@ -1715,59 +1677,18 @@ function renderHtml(appState, initialView = {}) {
     }
 
     .markdown .table-wrapper {
-      width: max-content;
       max-width: 100%;
+      overflow: visible;
       border: 1px solid var(--theme-border);
       border-radius: 8px;
       background: var(--theme-surface);
     }
 
-    .markdown .table-actions {
-      display: flex;
-      justify-content: flex-end;
-      padding: 6px 6px 0;
-    }
-
-    .markdown .table-scroll {
-      width: max-content;
-      max-width: 100%;
-      overflow-x: auto;
-      overflow-y: hidden;
-    }
-
     .markdown table {
-      width: max-content;
-      min-width: 100%;
-      table-layout: auto;
+      width: 100%;
+      table-layout: fixed;
       border-collapse: collapse;
       font-size: 13px;
-    }
-
-    .markdown .table-copy-button {
-      display: inline-grid;
-      width: 28px;
-      height: 28px;
-      padding: 5px;
-      place-items: center;
-      border: 1px solid var(--theme-border);
-      border-radius: 5px;
-      background: var(--theme-surface);
-      color: var(--theme-text);
-      cursor: pointer;
-    }
-
-    .markdown .table-copy-button:hover {
-      background: var(--theme-button-bg);
-    }
-
-    .markdown .table-copy-button:focus-visible {
-      outline: 2px solid var(--theme-active-border);
-      outline-offset: 2px;
-    }
-
-    .markdown .table-copy-button svg {
-      width: 16px;
-      height: 16px;
     }
 
     .markdown th,
@@ -1952,11 +1873,6 @@ function renderHtml(appState, initialView = {}) {
       .document {
         max-height: none;
       }
-
-      .markdown,
-      body.presenting .markdown {
-        width: 100%;
-      }
     }
   </style>
 </head>
@@ -1998,18 +1914,11 @@ function renderHtml(appState, initialView = {}) {
       <div class="nav-rail-inner">
         <div class="nav-rail-header">
           <h2 class="nav-rail-title">Documents</h2>
-          <div class="nav-rail-actions">
-            <button id="nav-preview-toggle" class="nav-preview-toggle" type="button" aria-label="Show title-only navigation results" aria-pressed="false" title="Show title-only navigation results">
-              <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-                <path d="M2 3.5h12v1H2v-1Zm0 4h12v1H2v-1Zm0 4h12v1H2v-1Z" fill="currentColor"></path>
-              </svg>
-            </button>
-            <button id="nav-pin" class="nav-pin is-active" type="button" aria-label="Unpin navigation sidebar" aria-pressed="true" title="Unpin navigation sidebar">
-              <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-                <path d="M5.4 1.5h5.2v1.7L9.7 5.5v2.8l1.8 1v1.2H8.6v4H7.4v-4H4.5V9.3l1.8-1V5.5L5.4 3.2V1.5Z" fill="currentColor"></path>
-              </svg>
-            </button>
-          </div>
+          <button id="nav-pin" class="nav-pin is-active" type="button" aria-label="Unpin navigation sidebar" aria-pressed="true" title="Unpin navigation sidebar">
+            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+              <path d="M5.4 1.5h5.2v1.7L9.7 5.5v2.8l1.8 1v1.2H8.6v4H7.4v-4H4.5V9.3l1.8-1V5.5L5.4 3.2V1.5Z" fill="currentColor"></path>
+            </svg>
+          </button>
         </div>
         <section id="results" class="results" aria-label="Search results"></section>
         <button id="nav-resize-handle" class="nav-resize-handle" type="button" aria-label="Resize document navigation sidebar" title="Drag to resize document navigation sidebar"></button>
@@ -2056,7 +1965,6 @@ function renderHtml(appState, initialView = {}) {
     const searchInput = document.getElementById("search");
     const refreshButton = document.getElementById("refresh");
     const navRail = document.getElementById("nav-rail");
-    const navPreviewToggle = document.getElementById("nav-preview-toggle");
     const navPin = document.getElementById("nav-pin");
     const navFlyoutTrigger = document.getElementById("nav-flyout-trigger");
     const navResizeHandle = document.getElementById("nav-resize-handle");
@@ -2103,7 +2011,6 @@ function renderHtml(appState, initialView = {}) {
     let mermaidModulePromise = null;
     const themeStorageKey = "kpe-doc-dashboard-theme";
     const navPinnedStorageKey = "content-viewer-nav-pinned";
-    const navPreviewTitleOnlyStorageKey = "content-viewer-nav-title-only";
     const navWidthStorageKey = "content-viewer-nav-width";
     const tagPinnedStorageKey = "content-viewer-tag-pinned";
     const searchSessionStorageKey = "content-viewer-search";
@@ -2471,16 +2378,6 @@ function renderHtml(appState, initialView = {}) {
       tagFlyoutTrigger.setAttribute("aria-expanded", String(isOpen || tagRail.classList.contains("is-pinned")));
     }
 
-    function setNavResultPreviewMode(isTitleOnly) {
-      resultsElement.dataset.previewMode = isTitleOnly ? "title-only" : "preview";
-      navPreviewToggle.classList.toggle("is-active", isTitleOnly);
-      navPreviewToggle.setAttribute("aria-pressed", String(isTitleOnly));
-      const label = isTitleOnly ? "Show navigation previews" : "Show title-only navigation results";
-      navPreviewToggle.setAttribute("aria-label", label);
-      navPreviewToggle.title = label;
-      storeFlag(navPreviewTitleOnlyStorageKey, isTitleOnly);
-    }
-
     function setNavPinned(isPinned) {
       document.body.classList.toggle("nav-unpinned", !isPinned);
       navRail.classList.toggle("is-pinned", isPinned);
@@ -2692,7 +2589,7 @@ function renderHtml(appState, initialView = {}) {
       const pathPart = hashIndex >= 0 ? parsedDestination.slice(0, hashIndex) : parsedDestination;
       const hashPart = hashIndex >= 0 ? parsedDestination.slice(hashIndex + 1) : "";
       const targetPath = pathPart ? resolveDocumentLinkPath(pathPart) : currentDocPath;
-      if (/\\.(?:md|csv)$/i.test(pathPart) || (!pathPart && hashPart)) {
+      if (/\\.md$/i.test(pathPart) || (!pathPart && hashPart)) {
         if (!targetPath) {
           return renderedLabel;
         }
@@ -2880,167 +2777,26 @@ function renderHtml(appState, initialView = {}) {
       return normalized;
     }
 
-    function renderTableRow(cells, cellTag, alignments, renderCell) {
+    function renderTableRow(cells, cellTag, alignments) {
       return "<tr>" + cells.map((cell, index) => {
         const alignment = alignments[index];
         const style = alignment ? ' style="text-align:' + alignment + '"' : "";
-        return "<" + cellTag + style + ">" + renderCell(cell) + "</" + cellTag + ">";
+        return "<" + cellTag + style + ">" + inlineMarkdown(cell) + "</" + cellTag + ">";
       }).join("") + "</tr>";
     }
 
-    function tableCopyButton() {
-      return '<button class="table-copy-button" type="button" data-copy-table title="Copy table as CSV" aria-label="Copy table as CSV">' +
-        '<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M5 1.5h7.5v9H11v-7.5H5v-1.5Zm-2 3H9v10H3v-10Zm1.5 1.5v7h3v-7h-3Z" fill="currentColor"></path></svg></button>';
-    }
-
-    function renderTable(headerCells, rows, options = {}) {
-      const cellCount = options.columnCount ?? headerCells.length;
-      const alignments = options.alignments || [];
-      const renderCell = options.renderCell || inlineMarkdown;
-      const normalizedHeaderCells = normalizeTableCells(headerCells, cellCount);
-      const normalizedRows = rows.map((row) => normalizeTableCells(row, cellCount));
-      const bodyRows = normalizedRows
-        .map((cells) => renderTableRow(cells, "td", alignments, renderCell))
+    function renderTable(headerLine, dividerLine, rowLines) {
+      const headerCells = splitTableRow(headerLine);
+      const alignments = tableAlignments(dividerLine);
+      const cellCount = headerCells.length;
+      const bodyRows = rowLines
+        .map((rowLine) => normalizeTableCells(splitTableRow(rowLine), cellCount))
+        .map((cells) => renderTableRow(cells, "td", alignments))
         .join("");
-      const csvModel = options.csvModel
-        ? ' data-csv-model="' + escapeHtml(JSON.stringify([normalizedHeaderCells, ...normalizedRows])) + '"'
-        : "";
 
-      return '<div class="table-wrapper"><div class="table-actions">' + tableCopyButton() +
-        '</div><div class="table-scroll"><table' + csvModel + "><thead>" +
-        renderTableRow(normalizedHeaderCells, "th", alignments, renderCell) +
-        "</thead><tbody>" + bodyRows + "</tbody></table></div></div>";
-    }
-
-    function renderMarkdownTable(headerLine, dividerLine, rowLines) {
-      return renderTable(
-        splitTableRow(headerLine),
-        rowLines.map((rowLine) => splitTableRow(rowLine)),
-        { alignments: tableAlignments(dividerLine), renderCell: inlineMarkdown },
-      );
-    }
-
-    function parseCsv(csv) {
-      const source = String(csv || "").replace(/^\\uFEFF/, "");
-      if (!source) {
-        return [];
-      }
-
-      const records = [];
-      let row = [];
-      let cell = "";
-      let inQuotes = false;
-      let afterQuote = false;
-      let hasRecordContent = false;
-
-      function pushCell() {
-        row.push(cell);
-        cell = "";
-      }
-
-      function pushRecord() {
-        pushCell();
-        records.push(row);
-        row = [];
-        hasRecordContent = false;
-      }
-
-      for (let index = 0; index < source.length; index += 1) {
-        const character = source[index];
-        if (inQuotes) {
-          if (character === '"') {
-            if (source[index + 1] === '"') {
-              cell += '"';
-              index += 1;
-            } else {
-              inQuotes = false;
-              afterQuote = true;
-            }
-          } else {
-            cell += character;
-          }
-          continue;
-        }
-
-        if (afterQuote && character !== "," && character !== "\\r" && character !== "\\n") {
-          throw new Error("CSV parse error: unexpected character after closing quote");
-        }
-        if (character === '"') {
-          if (cell) {
-            throw new Error("CSV parse error: unexpected quote in unquoted field");
-          }
-          inQuotes = true;
-          hasRecordContent = true;
-          continue;
-        }
-        if (character === ",") {
-          pushCell();
-          afterQuote = false;
-          hasRecordContent = true;
-          continue;
-        }
-        if (character === "\\r" || character === "\\n") {
-          if (character === "\\r" && source[index + 1] === "\\n") {
-            index += 1;
-          }
-          pushRecord();
-          afterQuote = false;
-          continue;
-        }
-
-        cell += character;
-        hasRecordContent = true;
-      }
-
-      if (inQuotes) {
-        throw new Error("CSV parse error: unclosed quoted field");
-      }
-      if (hasRecordContent || row.length || cell) {
-        pushRecord();
-      }
-      return records;
-    }
-
-    function renderCsvTable(csv) {
-      let records;
-      try {
-        records = parseCsv(csv);
-      } catch (error) {
-        throw new Error("CSV rendering error: " + error.message);
-      }
-      if (!records.length) {
-        return '<div class="empty">This CSV has no records.</div>';
-      }
-      const columnCount = Math.max(records[0].length, ...records.slice(1).map((row) => row.length));
-      return renderTable(records[0], records.slice(1), { columnCount, renderCell: escapeHtml, csvModel: true });
-    }
-
-    function escapeCsvField(value) {
-      const text = String(value ?? "");
-      return /[",\r\n]/.test(text) ? '"' + text.replaceAll('"', '""') + '"' : text;
-    }
-
-    function tableToCsv(table) {
-      const csvModel = table.getAttribute?.("data-csv-model");
-      if (csvModel !== null && csvModel !== undefined) {
-        let rows;
-        try {
-          rows = JSON.parse(csvModel);
-        } catch (error) {
-          throw new Error("Table CSV data is unavailable");
-        }
-        if (!Array.isArray(rows) || !rows.every((row) => Array.isArray(row))) {
-          throw new Error("Table CSV data is unavailable");
-        }
-        return rows
-          .map((row) => row.map((cell) => escapeCsvField(cell)).join(","))
-          .join("\r\n");
-      }
-      return Array.from(table.rows)
-        .map((row) => Array.from(row.cells)
-          .map((cell) => escapeCsvField(cell.innerText ?? cell.textContent ?? ""))
-          .join(","))
-        .join("\r\n");
+      return '<div class="table-wrapper"><table><thead>' +
+        renderTableRow(normalizeTableCells(headerCells, cellCount), "th", alignments) +
+        "</thead><tbody>" + bodyRows + "</tbody></table></div>";
     }
 
     function indentWidth(value) {
@@ -3331,7 +3087,7 @@ function renderHtml(appState, initialView = {}) {
           lineIndex -= 1;
           flushParagraph();
           closeList();
-          html.push(renderMarkdownTable(line, nextLine, tableRows));
+          html.push(renderTable(line, nextLine, tableRows));
           continue;
         }
 
@@ -3561,20 +3317,13 @@ function renderHtml(appState, initialView = {}) {
         return;
       }
 
-      const format = currentDocument.format || "markdown";
-      if (format === "csv") {
-        currentPages = [{ title: "Whole document", content: currentDocument.content }];
-      } else {
-        const isPresenting = document.body.classList.contains("presenting");
-        const selectedLevel = isPresenting ? paginateLevel.value : "1";
-        const renderableContent = stripFrontmatterFromMarkdown(currentDocument.content);
-        currentPages = getDocumentPages(renderableContent, selectedLevel);
-      }
+      const isPresenting = document.body.classList.contains("presenting");
+      const selectedLevel = isPresenting ? paginateLevel.value : "1";
+      const renderableContent = stripFrontmatterFromMarkdown(currentDocument.content);
+      currentPages = getDocumentPages(renderableContent, selectedLevel);
       currentPageIndex = Math.min(Math.max(currentPageIndex, 0), currentPages.length - 1);
       docContent.className = "markdown";
-      docContent.innerHTML = format === "csv"
-        ? renderCsvTable(currentPages[currentPageIndex].content)
-        : renderMarkdown(currentPages[currentPageIndex].content, currentDocument.path);
+      docContent.innerHTML = renderMarkdown(currentPages[currentPageIndex].content, currentDocument.path);
       await renderMermaidDiagrams();
       updatePresentationControls();
       updatePresentationTopbar();
@@ -3596,7 +3345,7 @@ function renderHtml(appState, initialView = {}) {
       statusElement.textContent = "Searching...";
       try {
         const data = await requestJson(apiUrl("/api/search", { q: query }));
-        statusElement.textContent = data.count + " documents shown from " + data.total + " indexed documents in " + repoLabel(activeRepo);
+        statusElement.textContent = data.count + " documents shown from " + data.total + " indexed markdown files in " + repoLabel(activeRepo);
         resultsElement.innerHTML = "";
         allDocumentFacets = {
           layers: Array.isArray(data.facets?.layers) ? data.facets.layers : (Array.isArray(data.layers) ? data.layers : []),
@@ -3679,42 +3428,6 @@ function renderHtml(appState, initialView = {}) {
       repoSelect.hidden = repos.length <= 1;
     }
 
-    async function writeClipboardText(text) {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
-        return;
-      }
-
-      const textarea = document.createElement("textarea");
-      textarea.value = text;
-      textarea.style.position = "fixed";
-      textarea.style.left = "-9999px";
-      document.body.appendChild(textarea);
-      try {
-        textarea.select();
-        if (!document.execCommand("copy")) {
-          throw new Error("Clipboard copy was denied");
-        }
-      } finally {
-        textarea.remove();
-      }
-    }
-
-    async function copyTableAsCsv(tableWrapper) {
-      const table = tableWrapper?.querySelector("table");
-      if (!table) {
-        statusElement.textContent = "Copy failed. The table is unavailable.";
-        return;
-      }
-
-      try {
-        await writeClipboardText(tableToCsv(table));
-        statusElement.textContent = "Copied table as CSV.";
-      } catch (error) {
-        statusElement.textContent = "Copy failed. Table CSV could not be copied.";
-      }
-    }
-
     async function copyShareLink() {
       if (!activePath) {
         statusElement.textContent = "Open a document before sharing a direct link.";
@@ -3723,7 +3436,18 @@ function renderHtml(appState, initialView = {}) {
 
       const link = documentUrl(activePath);
       try {
-        await writeClipboardText(link);
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(link);
+        } else {
+          const textarea = document.createElement("textarea");
+          textarea.value = link;
+          textarea.style.position = "fixed";
+          textarea.style.left = "-9999px";
+          document.body.appendChild(textarea);
+          textarea.select();
+          document.execCommand("copy");
+          textarea.remove();
+        }
         statusElement.textContent = "Copied direct document link: " + link;
       } catch (error) {
         statusElement.textContent = "Copy failed. Direct link: " + link;
@@ -3738,7 +3462,18 @@ function renderHtml(appState, initialView = {}) {
       }
 
       try {
-        await writeClipboardText(link);
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(link);
+        } else {
+          const textarea = document.createElement("textarea");
+          textarea.value = link;
+          textarea.style.position = "fixed";
+          textarea.style.left = "-9999px";
+          document.body.appendChild(textarea);
+          textarea.select();
+          document.execCommand("copy");
+          textarea.remove();
+        }
         statusElement.textContent = "Copied source Git URL: " + link;
       } catch (error) {
         statusElement.textContent = "Copy failed. Source Git URL: " + link;
@@ -3785,9 +3520,6 @@ function renderHtml(appState, initialView = {}) {
     });
     navRail.addEventListener("focusout", handleNavRailBlur);
     navFlyoutTrigger.addEventListener("click", () => setNavRailOpen(true));
-    navPreviewToggle.addEventListener("click", () => {
-      setNavResultPreviewMode(resultsElement.dataset.previewMode !== "title-only");
-    });
     navPin.addEventListener("click", () => {
       setNavPinned(!navRail.classList.contains("is-pinned"));
     });
@@ -3842,28 +3574,17 @@ function renderHtml(appState, initialView = {}) {
     sourceButton.addEventListener("click", copySourceUrl);
     shareButton.addEventListener("click", copyShareLink);
 
-    async function handleDocumentContentClick(event, container, copyTable, openDocumentHandler) {
-      const copyButton = event.target.closest?.("[data-copy-table]");
-      if (copyButton && container.contains(copyButton)) {
-        event.preventDefault();
-        await copyTable(copyButton.closest(".table-wrapper"));
-        return;
-      }
-
-      const link = event.target.closest?.("a[data-doc-link]");
+    docContent.addEventListener("click", async (event) => {
+      const link = event.target.closest("a[data-doc-link]");
       if (!link) {
         return;
       }
       event.preventDefault();
-      await openDocumentHandler(link.getAttribute("data-doc-link"));
+      await openDocument(link.getAttribute("data-doc-link"));
       const hash = link.getAttribute("data-doc-hash");
       if (hash) {
         document.getElementById(hash)?.scrollIntoView({ block: "start" });
       }
-    }
-
-    docContent.addEventListener("click", async (event) => {
-      await handleDocumentContentClick(event, docContent, copyTableAsCsv, openDocument);
     });
 
     themeSelect.addEventListener("change", async () => {
@@ -3936,7 +3657,6 @@ function renderHtml(appState, initialView = {}) {
       populateRepoSelect();
       populateThemeSelect();
       applyNavWidth(getStoredNavWidth());
-      setNavResultPreviewMode(getStoredFlag(navPreviewTitleOnlyStorageKey, false));
       setNavPinned(getStoredFlag(navPinnedStorageKey, true));
       setTagPinned(getStoredFlag(tagPinnedStorageKey, false));
       applyTheme(getInitialTheme());
@@ -4081,7 +3801,6 @@ async function handleRequest(appState, req, res) {
                 path: doc.path,
                 sourcePath: doc.sourcePath,
                 sourceUrl: sourceDocumentUrl(state.repo, doc.sourcePath),
-                format: doc.format,
                 title: doc.title,
                 layers: doc.layers,
                 tags: doc.tags,

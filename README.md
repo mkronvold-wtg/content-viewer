@@ -1,6 +1,6 @@
 # Content Viewer
 
-Markdown and CSV content viewer for browsing, searching, and presenting documents from a Git-backed content repository.
+Markdown content viewer for browsing, searching, and presenting documents from a Git-backed content repository.
 
 This repository includes:
 
@@ -11,20 +11,19 @@ This repository includes:
 
 ## Features
 
-- Markdown and CSV search across title, path, and raw document content; Markdown also includes frontmatter tags.
+- Markdown search across title, path, body, and frontmatter tags.
 - `tag:KT`-style frontmatter tag filtering.
 - Quoted phrase search, for example `"knowledge transfer"` keeps the phrase grouped.
 - Generated layer/tag indexes, including Confluence labels as tags, with a right-side metadata rail, all-document/current-document scope switch, and clickable `layer:value` or `tag:value` filters.
 - Local image/SVG asset resolution.
 - Mermaid rendering.
 - Tables, task lists, nested lists, blockquotes, code blocks, admonitions, links, bold, italic, and strikethrough.
-- Reader content uses 90% of the available pane (full width on narrow screens); intrinsic-width Markdown and CSV tables scroll only when needed and can be copied as CSV.
 - Presentation mode with heading or `---` pagination; direct document URLs with `?present=1` reopen in presentation mode.
 - Per-tab search text restoration that reruns the normal search pipeline after a browser reload.
 - Pin/unpin document navigation and tag sidebars with browser-stored flyout behavior and adjustable document navigation width.
 - Shared canonical `mkronvold/themes` theme pack loaded from vendored theme metadata and selected from a theme pulldown.
 - Multiple independent content repos addressed by URL prefix, for example `/kpe.content`.
-- Optional per-repo base directories that enforce each repository's document index root while keeping that prefix out of document display and browser URLs.
+- Optional per-repo base directories that enforce each repository's Markdown index root while keeping that prefix out of document display and browser URLs.
 - Direct document links with `repo/filename` page titles and a Share button that copies the current document URL.
 - A Source button that copies the current document's source Git URL.
 - On-demand refresh that runs `git pull --ff-only` and rebuilds the index.
@@ -229,14 +228,14 @@ The compose file binds to `127.0.0.1:8080` by default so it is not exposed on ev
 | `PORT` | No | HTTP port inside the container. Defaults to `8080`. |
 | `HOST` | No | Bind address inside the container. Defaults to `0.0.0.0`. |
 | `CONTENT_VIEWER_REPO_PATH` | No | Local path to the content clone. Defaults to `/app/content` in Docker. |
-| `CONTENT_VIEWER_REPO_URL` | Yes for clone mode | Git URL for the content repo. |
+| `CONTENT_VIEWER_REPO_URL` | Yes for clone mode | Git URL for the Markdown content repo. |
 | `CONTENT_VIEWER_REPO_BRANCH` | No | Branch to clone. Defaults to `main`. |
-| `CONTENT_VIEWER_REPO_BASE_DIR` | No | Optional repository-relative document index root for single-repository mode. Defaults to the repository root; it must exist as a directory in the checked-out content repository. |
+| `CONTENT_VIEWER_REPO_BASE_DIR` | No | Optional repository-relative Markdown index root for single-repository mode. Defaults to the repository root; it must exist as a directory in the checked-out content repository. |
 | `CONTENT_VIEWER_REPOS` | Yes for multi-repository mode | Ordered, comma-separated repository slug list. |
 | `CONTENT_VIEWER_REPO_<KEY>_PATH` | No | Local clone path. Defaults to `<content-root>/<slug>`. `<KEY>` is the slug uppercased with punctuation changed to `_`, e.g. `kpe.content` -> `KPE_CONTENT`. |
 | `CONTENT_VIEWER_REPO_<KEY>_URL` | Only when cloning | Git URL used to clone when the configured path does not already contain a Git clone. |
 | `CONTENT_VIEWER_REPO_<KEY>_BRANCH` | No | Branch to use for cloning and pulling. Defaults to `main`. |
-| `CONTENT_VIEWER_REPO_<KEY>_BASE_DIR` | No | Optional repository-relative document index root. Defaults to the repository root. Leading and trailing `/` are normalized; when set, it must exist as a directory in the checked-out content repository. |
+| `CONTENT_VIEWER_REPO_<KEY>_BASE_DIR` | No | Optional repository-relative Markdown index root. Defaults to the repository root. Leading and trailing `/` are normalized; when set, it must exist as a directory in the checked-out content repository. |
 | `CONTENT_VIEWER_REPO_<KEY>_LABEL` | No | Display label for that repo in the UI selector. |
 | `CONTENT_VIEWER_GITHUB_TOKEN` | Yes for private GitHub repos | Token used by `git clone` and `git pull`. |
 | `CONTENT_VIEWER_REFRESH_INTERVAL_SECONDS` | No | Optional scheduled pull/index refresh interval. |
@@ -309,11 +308,11 @@ Separate containers are not required initially. Split later only if you want a d
 | --- | --- |
 | `GET /` | Web UI. |
 | `GET /<repo>` | Web UI scoped to one configured repo. |
-| `GET /<repo>/<path-to-document.{md,csv}>` | Direct document link; opens that document in the regular reading view. |
+| `GET /<repo>/<path-to-document.md>` | Direct document link; opens that document in the regular reading view. |
 | `GET /api/health` | Health/readiness details. |
 | `GET /api/repos` | List configured repos. |
-| `GET /api/search?repo=<repo>&q=...` | Search indexed Markdown and CSV documents. |
-| `GET /api/doc?repo=<repo>&path=...` | Fetch one document by display path. Responses include `format` (`markdown` or `csv`); CSV content is returned as raw text and rendered by the browser as a plain-text table. |
+| `GET /api/search?repo=<repo>&q=...` | Search indexed Markdown. |
+| `GET /api/doc?repo=<repo>&path=...` | Fetch one document by display path. |
 | `POST /api/refresh?repo=<repo>` | Pull latest content and rebuild one repo index. |
 | `GET /asset?repo=<repo>&doc=...&src=...` | Resolve local document assets. |
 
