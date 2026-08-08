@@ -126,6 +126,19 @@ test("enforces BASE_DIR while preserving source paths and public display paths",
     }
 });
 
+test("allows a repository-contained BASE_DIR named ..docs", async () => {
+    await fs.mkdir(path.join(repositoryPath, "..docs"), { recursive: true });
+    await fs.writeFile(path.join(repositoryPath, "..docs", "guide.md"), "# Dot docs guide\n\ninside-dot-docs\n");
+    const server = await startIndexedServer("..docs");
+    try {
+        const search = await api(server, "/api/search?repo=content&q=inside-dot-docs");
+        assert.equal(search.response.status, 200);
+        assert.deepEqual(search.body.results.map((result) => result.path), ["guide.md"]);
+    } finally {
+        await server.close();
+    }
+});
+
 test("reports invalid BASE_DIR configurations without indexing the repository root", async () => {
     for (const [baseDir, expected] of [
         ["missing", /Invalid BASE_DIR for content repo "content": "missing" does not exist/],

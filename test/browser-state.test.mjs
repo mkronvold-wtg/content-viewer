@@ -69,6 +69,35 @@ function evaluateNavigationUrlFunctions(viewer, href) {
     return { ...functions, updates, window };
 }
 
+function resolveDocumentLinkPath(viewer, repos, currentDocPath, destination) {
+    const source = ["normalizeRelativePath", "resolveDocumentLinkPath"]
+        .map((name) => viewerFunction(viewer, name))
+        .join("\n");
+    return Function("repos", "activeRepo", "currentDocPath", "destination", `${source}\nreturn resolveDocumentLinkPath(destination);`)(
+        repos,
+        "content",
+        currentDocPath,
+        destination,
+    );
+}
+
+test("maps source-root document links into BASE_DIR display paths", async () => {
+    const serverPath = fileURLToPath(new URL("../server.mjs", import.meta.url));
+    const extensionPath = fileURLToPath(new URL("../extension.mjs", import.meta.url));
+    const [serverSource, extensionSource] = await Promise.all([
+        fs.readFile(serverPath, "utf8"),
+        fs.readFile(extensionPath, "utf8"),
+    ]);
+    const viewer = viewerSource(serverSource);
+    const repos = [{ slug: "content", baseDir: "docs" }];
+
+    assert.equal(viewer, viewerSource(extensionSource), "standalone and canvas viewer sources must stay in parity");
+    assert.equal(resolveDocumentLinkPath(viewer, repos, "guide.md", "/docs/other.md"), "other.md");
+    assert.equal(resolveDocumentLinkPath(viewer, repos, "nested/guide.md", "/docs/nested/other.md"), "nested/other.md");
+    assert.equal(resolveDocumentLinkPath(viewer, repos, "guide.md", "/outside/other.md"), null);
+    assert.equal(resolveDocumentLinkPath(viewer, repos, "guide.md", "/docs/../outside/other.md"), null);
+});
+
 before(async () => {
     await fs.mkdir(testRoot, { recursive: true });
     await git(["init", "--bare", remotePath]);

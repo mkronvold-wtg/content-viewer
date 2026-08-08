@@ -741,16 +741,20 @@ function stripAssetDecorations(src) {
 
 function normalizeRepoRelative(value) {
     const normalized = path.normalize(String(value ?? "").replaceAll("\\", "/").replace(/^\/+/, ""));
-    if (!normalized || normalized === "." || normalized.startsWith("..") || path.isAbsolute(normalized)) {
+    if (!normalized || normalized === "." || isParentTraversal(normalized) || path.isAbsolute(normalized)) {
         return null;
     }
 
     return normalized;
 }
 
+function isParentTraversal(relativePath) {
+    return relativePath === ".." || relativePath.startsWith(`..${path.sep}`);
+}
+
 function isWithinDirectory(parent, child) {
     const relative = path.relative(parent, child);
-    return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+    return relative === "" || (!isParentTraversal(relative) && !path.isAbsolute(relative));
 }
 
 async function fileExists(filePath) {
@@ -2537,12 +2541,36 @@ function renderHtml(appState, initialView = {}) {
           continue;
         }
         if (part === "..") {
+          if (!parts.length) {
+            return null;
+          }
           parts.pop();
           continue;
         }
         parts.push(part);
       }
       return parts.join("/");
+    }
+
+    function resolveDocumentLinkPath(destination) {
+      if (!destination.startsWith("/")) {
+        return normalizeRelativePath(currentDocPath, destination);
+      }
+
+      const sourcePath = normalizeRelativePath("", destination);
+      if (!sourcePath) {
+        return null;
+      }
+
+      const baseSegments = String(repos.find((repo) => repo.slug === activeRepo)?.baseDir || "")
+        .split("/")
+        .filter(Boolean);
+      const sourceSegments = sourcePath.split("/");
+      if (baseSegments.some((segment, index) => sourceSegments[index] !== segment)) {
+        return null;
+      }
+
+      return sourceSegments.slice(baseSegments.length).join("/") || null;
     }
 
     function linkHtml(label, destination) {
@@ -2560,8 +2588,11 @@ function renderHtml(appState, initialView = {}) {
       const hashIndex = parsedDestination.indexOf("#");
       const pathPart = hashIndex >= 0 ? parsedDestination.slice(0, hashIndex) : parsedDestination;
       const hashPart = hashIndex >= 0 ? parsedDestination.slice(hashIndex + 1) : "";
-      const targetPath = pathPart ? normalizeRelativePath(currentDocPath, pathPart) : currentDocPath;
+      const targetPath = pathPart ? resolveDocumentLinkPath(pathPart) : currentDocPath;
       if (/\\.md$/i.test(pathPart) || (!pathPart && hashPart)) {
+        if (!targetPath) {
+          return renderedLabel;
+        }
         return '<a href="' + escapeHtml(documentUrl(targetPath)) + '" data-doc-link="' + escapeHtml(targetPath) + '" data-doc-hash="' + escapeHtml(hashPart) + '">' + renderedLabel + "</a>";
       }
 
