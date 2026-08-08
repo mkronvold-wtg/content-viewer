@@ -146,6 +146,7 @@ test('validation workflow runs the complete Node suite before one separate image
     'npm run test:browser-state',
     'npm run test:base-directory-root',
     'npm run test:csv',
+    'npm run test:table-controls',
     'npm run test:security-exceptions',
     'npm run test:base-digest-remediation',
   ]);
