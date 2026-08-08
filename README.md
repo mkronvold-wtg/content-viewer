@@ -231,19 +231,23 @@ The compose file binds to `127.0.0.1:8080` by default so it is not exposed on ev
 | `CONTENT_VIEWER_REPO_URL` | Yes for clone mode | Git URL for the Markdown content repo. |
 | `CONTENT_VIEWER_REPO_BRANCH` | No | Branch to clone. Defaults to `main`. |
 | `CONTENT_VIEWER_REPOS` | Yes for multi-repository mode | Ordered, comma-separated repository slug list. |
-| `CONTENT_VIEWER_REPO_<KEY>_PATH` | Yes for each configured slug | Local clone path. `<KEY>` is the slug uppercased with punctuation changed to `_`, e.g. `kpe.content` -> `KPE_CONTENT`. |
-| `CONTENT_VIEWER_REPO_<KEY>_URL` | Yes for each configured slug | Git URL for that repo. |
-| `CONTENT_VIEWER_REPO_<KEY>_BRANCH` | Yes for each configured slug | Branch to use for that repo. |
-| `CONTENT_VIEWER_REPO_<KEY>_BASE_DIR` | Yes for each configured slug | Repository-relative path that scopes the intended document content. Leading and trailing `/` are normalized. |
+| `CONTENT_VIEWER_REPO_<KEY>_PATH` | No | Local clone path. Defaults to `<content-root>/<slug>`. `<KEY>` is the slug uppercased with punctuation changed to `_`, e.g. `kpe.content` -> `KPE_CONTENT`. |
+| `CONTENT_VIEWER_REPO_<KEY>_URL` | Only when cloning | Git URL used to clone when the configured path does not already contain a Git clone. |
+| `CONTENT_VIEWER_REPO_<KEY>_BRANCH` | No | Branch to use for cloning and pulling. Defaults to `main`. |
+| `CONTENT_VIEWER_REPO_<KEY>_BASE_DIR` | No | Repository-relative display/share path prefix. Defaults to empty. Leading and trailing `/` are normalized. It does not limit indexed documents. |
 | `CONTENT_VIEWER_REPO_<KEY>_LABEL` | No | Display label for that repo in the UI selector. |
 | `CONTENT_VIEWER_GITHUB_TOKEN` | Yes for private GitHub repos | Token used by `git clone` and `git pull`. |
 | `CONTENT_VIEWER_REFRESH_INTERVAL_SECONDS` | No | Optional scheduled pull/index refresh interval. |
 
-For each slug in `CONTENT_VIEWER_REPOS`, configure all four corresponding
-settings above. `BASE_DIR` declares the repository-relative content scope; it
-documents the intended content location and does not assert that the directory
-already exists. Leading and trailing `/` are normalized, so `/data/` and
-`data` select the same scope.
+For each slug in `CONTENT_VIEWER_REPOS`, only the slug itself is required.
+`PATH` defaults to `<content-root>/<slug>`, `BRANCH` defaults to `main`, and
+`BASE_DIR` defaults to empty. Set `URL` when the app must clone the repository;
+it is not needed when the configured path already contains a Git clone.
+
+`BASE_DIR` is not an indexing boundary: the app indexes the entire repository.
+It normalizes leading and trailing `/`, removes that prefix from document
+display and share paths where it is present, and adds it back when resolving
+assets. Thus, `/data/` and `data` use the same display/share prefix.
 
 Example multi-repository `.env`:
 
