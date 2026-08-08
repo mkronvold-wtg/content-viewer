@@ -466,8 +466,16 @@ function extractTitle(content, filePath) {
     return path.basename(filePath, path.extname(filePath));
 }
 
-function makeSnippet(content, tokens) {
-    const normalized = stripFrontmatter(content).replace(/\s+/g, " ").trim();
+function documentFormat(filePath) {
+    const extension = path.extname(filePath).toLowerCase();
+    if (extension === ".csv") {
+        return "csv";
+    }
+    return extension === ".md" ? "markdown" : null;
+}
+
+function makeSnippet(content, tokens, stripMarkdownFrontmatter = true) {
+    const normalized = (stripMarkdownFrontmatter ? stripFrontmatter(content) : String(content ?? "")).replace(/\s+/g, " ").trim();
     if (!normalized) {
         return "";
     }
@@ -592,7 +600,8 @@ async function buildIndex(repo) {
                     return;
                 }
 
-                if (!entry.isFile() || !entry.name.toLowerCase().endsWith(".md")) {
+                const format = documentFormat(entry.name);
+                if (!entry.isFile() || !format) {
                     return;
                 }
 
@@ -605,11 +614,12 @@ async function buildIndex(repo) {
                 const content = await fs.readFile(fullPath, "utf8");
                 const sourcePath = toPosixPath(path.relative(repoRoot, fullPath));
                 const displayPath = toPosixPath(path.relative(indexRoot, fullPath));
-                const frontmatter = extractFrontmatter(content);
-                const title = extractTitle(content, fullPath);
+                const frontmatter = format === "markdown" ? extractFrontmatter(content) : {};
+                const title = format === "markdown" ? extractTitle(content, fullPath) : path.basename(fullPath, path.extname(fullPath));
                 docs.push({
                     path: displayPath,
                     sourcePath,
+                    format,
                     title,
                     layers: frontmatter.layers ?? [],
                     tags: frontmatter.tags ?? [],
@@ -710,13 +720,14 @@ function searchIndex(index, query, limit = 50) {
 
     return scored.map(({ doc, score }) => ({
         path: doc.path,
+        format: doc.format,
         title: doc.title,
         layers: doc.layers,
         tags: doc.tags,
         modified: doc.modified,
         size: doc.size,
         score,
-        snippet: makeSnippet(doc.content, tokens),
+        snippet: makeSnippet(doc.content, tokens, doc.format === "markdown"),
     }));
 }
 
@@ -2589,7 +2600,7 @@ function renderHtml(appState, initialView = {}) {
       const pathPart = hashIndex >= 0 ? parsedDestination.slice(0, hashIndex) : parsedDestination;
       const hashPart = hashIndex >= 0 ? parsedDestination.slice(hashIndex + 1) : "";
       const targetPath = pathPart ? resolveDocumentLinkPath(pathPart) : currentDocPath;
-      if (/\\.md$/i.test(pathPart) || (!pathPart && hashPart)) {
+      if (/\\.(?:md|csv)$/i.test(pathPart) || (!pathPart && hashPart)) {
         if (!targetPath) {
           return renderedLabel;
         }
@@ -2777,26 +2788,129 @@ function renderHtml(appState, initialView = {}) {
       return normalized;
     }
 
-    function renderTableRow(cells, cellTag, alignments) {
+    function renderTableRow(cells, cellTag, alignments, renderCell) {
       return "<tr>" + cells.map((cell, index) => {
         const alignment = alignments[index];
         const style = alignment ? ' style="text-align:' + alignment + '"' : "";
-        return "<" + cellTag + style + ">" + inlineMarkdown(cell) + "</" + cellTag + ">";
+        return "<" + cellTag + style + ">" + renderCell(cell) + "</" + cellTag + ">";
       }).join("") + "</tr>";
     }
 
-    function renderTable(headerLine, dividerLine, rowLines) {
-      const headerCells = splitTableRow(headerLine);
-      const alignments = tableAlignments(dividerLine);
-      const cellCount = headerCells.length;
-      const bodyRows = rowLines
-        .map((rowLine) => normalizeTableCells(splitTableRow(rowLine), cellCount))
-        .map((cells) => renderTableRow(cells, "td", alignments))
+    function renderTable(headerCells, rows, options = {}) {
+      const cellCount = options.columnCount ?? headerCells.length;
+      const alignments = options.alignments || [];
+      const renderCell = options.renderCell || inlineMarkdown;
+      const bodyRows = rows
+        .map((row) => normalizeTableCells(row, cellCount))
+        .map((cells) => renderTableRow(cells, "td", alignments, renderCell))
         .join("");
 
       return '<div class="table-wrapper"><table><thead>' +
-        renderTableRow(normalizeTableCells(headerCells, cellCount), "th", alignments) +
+        renderTableRow(normalizeTableCells(headerCells, cellCount), "th", alignments, renderCell) +
         "</thead><tbody>" + bodyRows + "</tbody></table></div>";
+    }
+
+    function renderMarkdownTable(headerLine, dividerLine, rowLines) {
+      return renderTable(
+        splitTableRow(headerLine),
+        rowLines.map((rowLine) => splitTableRow(rowLine)),
+        { alignments: tableAlignments(dividerLine), renderCell: inlineMarkdown },
+      );
+    }
+
+    function parseCsv(csv) {
+      const source = String(csv || "").replace(/^\\uFEFF/, "");
+      if (!source) {
+        return [];
+      }
+
+      const records = [];
+      let row = [];
+      let cell = "";
+      let inQuotes = false;
+      let afterQuote = false;
+      let hasRecordContent = false;
+
+      function pushCell() {
+        row.push(cell);
+        cell = "";
+      }
+
+      function pushRecord() {
+        pushCell();
+        records.push(row);
+        row = [];
+        hasRecordContent = false;
+      }
+
+      for (let index = 0; index < source.length; index += 1) {
+        const character = source[index];
+        if (inQuotes) {
+          if (character === '"') {
+            if (source[index + 1] === '"') {
+              cell += '"';
+              index += 1;
+            } else {
+              inQuotes = false;
+              afterQuote = true;
+            }
+          } else {
+            cell += character;
+          }
+          continue;
+        }
+
+        if (afterQuote && character !== "," && character !== "\\r" && character !== "\\n") {
+          throw new Error("CSV parse error: unexpected character after closing quote");
+        }
+        if (character === '"') {
+          if (cell) {
+            throw new Error("CSV parse error: unexpected quote in unquoted field");
+          }
+          inQuotes = true;
+          hasRecordContent = true;
+          continue;
+        }
+        if (character === ",") {
+          pushCell();
+          afterQuote = false;
+          hasRecordContent = true;
+          continue;
+        }
+        if (character === "\\r" || character === "\\n") {
+          if (character === "\\r" && source[index + 1] === "\\n") {
+            index += 1;
+          }
+          pushRecord();
+          afterQuote = false;
+          continue;
+        }
+
+        cell += character;
+        hasRecordContent = true;
+      }
+
+      if (inQuotes) {
+        throw new Error("CSV parse error: unclosed quoted field");
+      }
+      if (hasRecordContent || row.length || cell) {
+        pushRecord();
+      }
+      return records;
+    }
+
+    function renderCsvTable(csv) {
+      let records;
+      try {
+        records = parseCsv(csv);
+      } catch (error) {
+        throw new Error("CSV rendering error: " + error.message);
+      }
+      if (!records.length) {
+        return '<div class="empty">This CSV has no records.</div>';
+      }
+      const columnCount = Math.max(records[0].length, ...records.slice(1).map((row) => row.length));
+      return renderTable(records[0], records.slice(1), { columnCount, renderCell: escapeHtml });
     }
 
     function indentWidth(value) {
@@ -3087,7 +3201,7 @@ function renderHtml(appState, initialView = {}) {
           lineIndex -= 1;
           flushParagraph();
           closeList();
-          html.push(renderTable(line, nextLine, tableRows));
+          html.push(renderMarkdownTable(line, nextLine, tableRows));
           continue;
         }
 
@@ -3317,13 +3431,20 @@ function renderHtml(appState, initialView = {}) {
         return;
       }
 
-      const isPresenting = document.body.classList.contains("presenting");
-      const selectedLevel = isPresenting ? paginateLevel.value : "1";
-      const renderableContent = stripFrontmatterFromMarkdown(currentDocument.content);
-      currentPages = getDocumentPages(renderableContent, selectedLevel);
+      const format = currentDocument.format || "markdown";
+      if (format === "csv") {
+        currentPages = [{ title: "Whole document", content: currentDocument.content }];
+      } else {
+        const isPresenting = document.body.classList.contains("presenting");
+        const selectedLevel = isPresenting ? paginateLevel.value : "1";
+        const renderableContent = stripFrontmatterFromMarkdown(currentDocument.content);
+        currentPages = getDocumentPages(renderableContent, selectedLevel);
+      }
       currentPageIndex = Math.min(Math.max(currentPageIndex, 0), currentPages.length - 1);
       docContent.className = "markdown";
-      docContent.innerHTML = renderMarkdown(currentPages[currentPageIndex].content, currentDocument.path);
+      docContent.innerHTML = format === "csv"
+        ? renderCsvTable(currentPages[currentPageIndex].content)
+        : renderMarkdown(currentPages[currentPageIndex].content, currentDocument.path);
       await renderMermaidDiagrams();
       updatePresentationControls();
       updatePresentationTopbar();
@@ -3345,7 +3466,7 @@ function renderHtml(appState, initialView = {}) {
       statusElement.textContent = "Searching...";
       try {
         const data = await requestJson(apiUrl("/api/search", { q: query }));
-        statusElement.textContent = data.count + " documents shown from " + data.total + " indexed markdown files in " + repoLabel(activeRepo);
+        statusElement.textContent = data.count + " documents shown from " + data.total + " indexed documents in " + repoLabel(activeRepo);
         resultsElement.innerHTML = "";
         allDocumentFacets = {
           layers: Array.isArray(data.facets?.layers) ? data.facets.layers : (Array.isArray(data.layers) ? data.layers : []),
@@ -3801,6 +3922,7 @@ async function handleRequest(appState, req, res) {
                 path: doc.path,
                 sourcePath: doc.sourcePath,
                 sourceUrl: sourceDocumentUrl(state.repo, doc.sourcePath),
+                format: doc.format,
                 title: doc.title,
                 layers: doc.layers,
                 tags: doc.tags,
