@@ -195,10 +195,15 @@ described in the runbook.
 2. Edit `.env`:
 
    ```env
-   CONTENT_VIEWER_REPO_NAME=kpe.content
-   CONTENT_VIEWER_REPO_BASE_DIR=/data
-   CONTENT_VIEWER_REPO_URL=https://github.com/OWNER/CONTENT_REPO.git
-   CONTENT_VIEWER_REPO_BRANCH=main
+   CONTENT_VIEWER_REPOS=kpe.content,team.docs
+   CONTENT_VIEWER_REPO_KPE_CONTENT_PATH=/app/content/kpe.content
+   CONTENT_VIEWER_REPO_KPE_CONTENT_URL=https://github.com/OWNER/kpe-content.git
+   CONTENT_VIEWER_REPO_KPE_CONTENT_BRANCH=main
+   CONTENT_VIEWER_REPO_KPE_CONTENT_BASE_DIR=/data/
+   CONTENT_VIEWER_REPO_TEAM_DOCS_PATH=/app/content/team.docs
+   CONTENT_VIEWER_REPO_TEAM_DOCS_URL=https://github.com/OWNER/team-docs.git
+   CONTENT_VIEWER_REPO_TEAM_DOCS_BRANCH=main
+   CONTENT_VIEWER_REPO_TEAM_DOCS_BASE_DIR=/docs/
    CONTENT_VIEWER_GITHUB_TOKEN=...
    ```
 
@@ -222,31 +227,36 @@ The compose file binds to `127.0.0.1:8080` by default so it is not exposed on ev
 | --- | --- | --- |
 | `PORT` | No | HTTP port inside the container. Defaults to `8080`. |
 | `HOST` | No | Bind address inside the container. Defaults to `0.0.0.0`. |
-| `CONTENT_VIEWER_REPO_NAME` | No | Single-repo URL slug. Defaults to `content`; use `kpe.content` for `/kpe.content/...` URLs. |
 | `CONTENT_VIEWER_REPO_PATH` | No | Local path to the content clone. Defaults to `/app/content` in Docker. |
 | `CONTENT_VIEWER_REPO_URL` | Yes for clone mode | Git URL for the Markdown content repo. |
 | `CONTENT_VIEWER_REPO_BRANCH` | No | Branch to clone. Defaults to `main`. |
-| `CONTENT_VIEWER_REPO_BASE_DIR` | No | Repo-relative directory to hide from display paths and shared URLs, for example `/data`. |
-| `CONTENT_VIEWER_REPOS` | No | Comma-separated multi-repo slugs. When set, use per-repo variables below. |
-| `CONTENT_VIEWER_REPO_<KEY>_PATH` | Yes for each multi repo | Local clone path. `<KEY>` is the slug uppercased with punctuation changed to `_`, e.g. `kpe.content` -> `KPE_CONTENT`. |
-| `CONTENT_VIEWER_REPO_<KEY>_URL` | Yes for clone mode | Git URL for that repo. |
-| `CONTENT_VIEWER_REPO_<KEY>_BRANCH` | No | Branch for that repo. Defaults to `main`. |
-| `CONTENT_VIEWER_REPO_<KEY>_BASE_DIR` | No | Repo-relative directory hidden from that repo's displayed paths and URLs. |
+| `CONTENT_VIEWER_REPOS` | Yes for multi-repository mode | Ordered, comma-separated repository slug list. |
+| `CONTENT_VIEWER_REPO_<KEY>_PATH` | Yes for each configured slug | Local clone path. `<KEY>` is the slug uppercased with punctuation changed to `_`, e.g. `kpe.content` -> `KPE_CONTENT`. |
+| `CONTENT_VIEWER_REPO_<KEY>_URL` | Yes for each configured slug | Git URL for that repo. |
+| `CONTENT_VIEWER_REPO_<KEY>_BRANCH` | Yes for each configured slug | Branch to use for that repo. |
+| `CONTENT_VIEWER_REPO_<KEY>_BASE_DIR` | Yes for each configured slug | Repository-relative path that scopes the intended document content. Leading and trailing `/` are normalized. |
 | `CONTENT_VIEWER_REPO_<KEY>_LABEL` | No | Display label for that repo in the UI selector. |
 | `CONTENT_VIEWER_GITHUB_TOKEN` | Yes for private GitHub repos | Token used by `git clone` and `git pull`. |
 | `CONTENT_VIEWER_REFRESH_INTERVAL_SECONDS` | No | Optional scheduled pull/index refresh interval. |
 
-Example multi-repo `.env`:
+For each slug in `CONTENT_VIEWER_REPOS`, configure all four corresponding
+settings above. `BASE_DIR` declares the repository-relative content scope; it
+documents the intended content location and does not assert that the directory
+already exists. Leading and trailing `/` are normalized, so `/data/` and
+`data` select the same scope.
+
+Example multi-repository `.env`:
 
 ```env
 CONTENT_VIEWER_REPOS=kpe.content,team.docs
 CONTENT_VIEWER_REPO_KPE_CONTENT_PATH=/app/content/kpe.content
 CONTENT_VIEWER_REPO_KPE_CONTENT_URL=https://github.com/wtg-e2open/kpe-content.git
 CONTENT_VIEWER_REPO_KPE_CONTENT_BRANCH=main
-CONTENT_VIEWER_REPO_KPE_CONTENT_BASE_DIR=/data
+CONTENT_VIEWER_REPO_KPE_CONTENT_BASE_DIR=/data/
 CONTENT_VIEWER_REPO_TEAM_DOCS_PATH=/app/content/team.docs
 CONTENT_VIEWER_REPO_TEAM_DOCS_URL=https://github.com/OWNER/team-docs.git
-CONTENT_VIEWER_REPO_TEAM_DOCS_BASE_DIR=/docs
+CONTENT_VIEWER_REPO_TEAM_DOCS_BRANCH=main
+CONTENT_VIEWER_REPO_TEAM_DOCS_BASE_DIR=/docs/
 ```
 
 Repo slugs are reserved for app routes, so do not use `api`, `asset`, `vendor`, or `favicon.ico`.
