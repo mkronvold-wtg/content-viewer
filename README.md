@@ -23,7 +23,7 @@ This repository includes:
 - Pin/unpin document navigation and tag sidebars with browser-stored flyout behavior and adjustable document navigation width.
 - Shared canonical `mkronvold/themes` theme pack loaded from vendored theme metadata and selected from a theme pulldown.
 - Multiple independent content repos addressed by URL prefix, for example `/kpe.content`.
-- Configurable per-repo base directory hiding, so `/data/Users/...` displays and shares as `Users/...`.
+- Optional per-repo base directories that enforce each repository's Markdown index root while keeping that prefix out of document display and browser URLs.
 - Direct document links with `repo/filename` page titles and a Share button that copies the current document URL.
 - A Source button that copies the current document's source Git URL.
 - On-demand refresh that runs `git pull --ff-only` and rebuilds the index.
@@ -230,11 +230,12 @@ The compose file binds to `127.0.0.1:8080` by default so it is not exposed on ev
 | `CONTENT_VIEWER_REPO_PATH` | No | Local path to the content clone. Defaults to `/app/content` in Docker. |
 | `CONTENT_VIEWER_REPO_URL` | Yes for clone mode | Git URL for the Markdown content repo. |
 | `CONTENT_VIEWER_REPO_BRANCH` | No | Branch to clone. Defaults to `main`. |
+| `CONTENT_VIEWER_REPO_BASE_DIR` | No | Optional repository-relative Markdown index root for single-repository mode. Defaults to the repository root; it must exist as a directory in the checked-out content repository. |
 | `CONTENT_VIEWER_REPOS` | Yes for multi-repository mode | Ordered, comma-separated repository slug list. |
 | `CONTENT_VIEWER_REPO_<KEY>_PATH` | No | Local clone path. Defaults to `<content-root>/<slug>`. `<KEY>` is the slug uppercased with punctuation changed to `_`, e.g. `kpe.content` -> `KPE_CONTENT`. |
 | `CONTENT_VIEWER_REPO_<KEY>_URL` | Only when cloning | Git URL used to clone when the configured path does not already contain a Git clone. |
 | `CONTENT_VIEWER_REPO_<KEY>_BRANCH` | No | Branch to use for cloning and pulling. Defaults to `main`. |
-| `CONTENT_VIEWER_REPO_<KEY>_BASE_DIR` | No | Repository-relative display/share path prefix. Defaults to empty. Leading and trailing `/` are normalized. It does not limit indexed documents. |
+| `CONTENT_VIEWER_REPO_<KEY>_BASE_DIR` | No | Optional repository-relative Markdown index root. Defaults to the repository root. Leading and trailing `/` are normalized; when set, it must exist as a directory in the checked-out content repository. |
 | `CONTENT_VIEWER_REPO_<KEY>_LABEL` | No | Display label for that repo in the UI selector. |
 | `CONTENT_VIEWER_GITHUB_TOKEN` | Yes for private GitHub repos | Token used by `git clone` and `git pull`. |
 | `CONTENT_VIEWER_REFRESH_INTERVAL_SECONDS` | No | Optional scheduled pull/index refresh interval. |
@@ -244,10 +245,14 @@ For each slug in `CONTENT_VIEWER_REPOS`, only the slug itself is required.
 `BASE_DIR` defaults to empty. Set `URL` when the app must clone the repository;
 it is not needed when the configured path already contains a Git clone.
 
-`BASE_DIR` is not an indexing boundary: the app indexes the entire repository.
-It normalizes leading and trailing `/`, removes that prefix from document
-display and share paths where it is present, and adds it back when resolving
-assets. Thus, `/data/` and `data` use the same display/share prefix.
+`BASE_DIR` is an enforced indexing boundary, not merely a display prefix. The
+app walks only that repository-relative directory; `/data/` and `data` select
+the same directory. A configured directory that is missing, is not a
+directory, traverses outside the repository, or resolves through a symlink
+outside it is an index error and does not fall back to indexing the repository
+root. Documents, titles, search/navigation results, Share links, and browser
+routes use paths relative to `BASE_DIR`; Source links and local asset resolution
+retain the actual repository-relative source path, including `BASE_DIR`.
 
 Example multi-repository `.env`:
 
