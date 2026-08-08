@@ -130,7 +130,7 @@ function assertScanHasNoPermissionsOverride(workflow) {
   return scan;
 }
 
-test('validation workflow runs the complete Node suite before the separate image smoke test', async () => {
+test('validation workflow runs the complete Node suite before one separate image smoke test', async () => {
   const root = resolve(import.meta.dirname, '..');
   const [workflowSource, packageSource] = await Promise.all([
     readFile(resolve(root, '.github/workflows/validate.yml'), 'utf8'),
@@ -139,18 +139,26 @@ test('validation workflow runs the complete Node suite before the separate image
   const workflow = parseWorkflow(workflowSource);
   const packageJson = JSON.parse(packageSource);
   const steps = workflow.jobs?.validate?.steps;
+  const deterministicSuite = (packageJson.scripts?.test ?? '').split(/\s*&&\s*/).filter(Boolean);
 
+  assert.deepEqual(deterministicSuite, [
+    'npm run test:contracts',
+    'npm run test:browser-state',
+    'npm run test:base-directory-root',
+    'npm run test:security-exceptions',
+    'npm run test:base-digest-remediation',
+  ]);
+  assert.equal(deterministicSuite.includes('npm run test:container'), false);
   assert.ok(Array.isArray(steps), 'Validation workflow must define validate job steps');
-  assert.equal(
-    steps.find((step) => step.name === 'Run deterministic Node test suite')?.run,
-    'npm test',
-  );
-  assert.match(packageJson.scripts?.test ?? '', /\btest:browser-state\b/);
-  assert.match(packageJson.scripts?.test ?? '', /\btest:base-directory-root\b/);
-  assert.equal(
-    steps.find((step) => step.name === 'Smoke-test final image')?.run,
-    'npm run test:container',
-  );
+  const deterministicStepIndex = steps.findIndex((step) => step.name === 'Run deterministic Node test suite');
+  assert.notEqual(deterministicStepIndex, -1, 'Validation workflow must run the deterministic Node test suite');
+  assert.equal(steps[deterministicStepIndex].run, 'npm test');
+
+  const containerSmokeSteps = steps.filter((step) => step.run === 'npm run test:container');
+  assert.equal(containerSmokeSteps.length, 1, 'Validation workflow must run one separate container smoke step');
+  const containerSmokeIndex = steps.indexOf(containerSmokeSteps[0]);
+  assert.equal(containerSmokeSteps[0].name, 'Smoke-test final image');
+  assert.ok(containerSmokeIndex > deterministicStepIndex, 'Container smoke must run after deterministic tests');
 });
 
 test('parses the actual pinned runtime tag and changes only its digest', () => {
