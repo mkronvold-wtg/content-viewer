@@ -139,6 +139,17 @@ jobs:
           digest="$(docker image inspect --format='{{.Id}}' "$REMEDIATION_IMAGE")"
           [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]] || { echo "Invalid current image digest" >&2; exit 1; }
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - name: Set Trivy cache date
+        id: trivy-cache-date
+        shell: bash
+        run: echo "date=$(date -u +'%Y-%m-%d')" >> "$GITHUB_OUTPUT"
+      - name: Cache Trivy vulnerability database
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ${{ github.workspace }}/.cache/trivy
+          key: trivy-${{ runner.os }}-${{ steps.trivy-cache-date.outputs.date }}
+          restore-keys: |
+            trivy-${{ runner.os }}-
       - name: Scan current final runtime image
         uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # v0.33.1
         with:
@@ -150,6 +161,7 @@ jobs:
           exit-code: '0'
           ignore-unfixed: 'false'
           version: v0.73.0
+          cache: 'false'
       - name: Enforce current final-image exception policy
         run: >-
           node scripts/enforce-trivy-policy.mjs --scan image --input trivy-current.json
@@ -189,6 +201,7 @@ jobs:
           exit-code: '0'
           ignore-unfixed: 'false'
           version: v0.73.0
+          cache: 'false'
       - name: Enforce candidate final-image exception policy
         run: >-
           node scripts/enforce-trivy-policy.mjs --scan image --input trivy-candidate.json
