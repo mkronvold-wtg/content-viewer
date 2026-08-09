@@ -9,7 +9,7 @@ repository was run against a deployment target.
 
 | Source | Verified repository behavior |
 | --- | --- |
-| `Dockerfile` | Uses the official `node:26-trixie-slim` image pinned to an immutable digest for separate dependency and runtime stages. The runtime installs Git and CA certificates, retains only production dependencies and required server/theme assets, creates `/app/content` owned by `node`, runs as `USER node`, and health-checks `GET /api/health`. |
+| `Dockerfile` | Uses the official `node:26-alpine3.23` image pinned to an immutable digest for separate dependency and runtime stages. The runtime installs Git and CA certificates, retains only production dependencies and required server/theme assets, creates `/app/content` owned by `node`, runs as `USER node`, and health-checks `GET /api/health`. |
 | `docker-compose.yml` | Local Compose builds the service, tags it `content-viewer:local`, binds `127.0.0.1:8080:8080`, and mounts the logical named volume `content-viewer-content` at `/app/content`. |
 | `docker-compose.npm.yml` | The dockerhost/NPM-proxy target builds the service, mounts the same logical volume at `/app/content`, exposes port `8080` only to Compose networks, and joins the external network named `npm-proxy`. It has no host `ports` mapping. |
 | `README.md` | Documents the local command `docker compose up -d --build`; it does not define an authoritative dockerhost project name or invocation. |
