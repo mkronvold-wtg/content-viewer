@@ -39,7 +39,13 @@ jobs:
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version-file: .node-version
-          cache: npm
+      - name: Cache npm downloads
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ~/.npm
+          key: npm-downloads-${{ runner.os }}-${{ runner.arch }}-node-26-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            npm-downloads-${{ runner.os }}-${{ runner.arch }}-node-26-
       - name: Resolve the allowlisted same-tag manifest
         id: decision
         env:
@@ -99,7 +105,13 @@ jobs:
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version-file: .node-version
-          cache: npm
+      - name: Cache npm downloads
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ~/.npm
+          key: npm-downloads-${{ runner.os }}-${{ runner.arch }}-node-26-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            npm-downloads-${{ runner.os }}-${{ runner.arch }}-node-26-
       - name: Install and verify helper policy
         run: |
           npm ci
@@ -246,7 +258,13 @@ jobs:
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version-file: .node-version
-          cache: npm
+      - name: Cache npm downloads
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ~/.npm
+          key: npm-downloads-${{ runner.os }}-${{ runner.arch }}-node-26-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            npm-downloads-${{ runner.os }}-${{ runner.arch }}-node-26-
       - name: Reserve a unique remediation branch
         id: branch
         shell: bash
