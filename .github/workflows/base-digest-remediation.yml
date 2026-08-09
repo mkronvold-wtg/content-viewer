@@ -36,7 +36,7 @@ jobs:
           ref: main
           persist-credentials: false
       - name: Set up Node
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.0.0
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version-file: .node-version
           cache: npm
@@ -96,7 +96,7 @@ jobs:
           [[ "$scanned_base" == "$origin_main" ]] || { echo "main changed while preparing the scan" >&2; exit 1; }
           echo "sha=$scanned_base" >> "$GITHUB_OUTPUT"
       - name: Set up Node
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.0.0
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version-file: .node-version
           cache: npm
@@ -243,7 +243,7 @@ jobs:
           git switch --detach "$SCANNED_BASE_SHA"
           [[ "$(git rev-parse HEAD)" == "$SCANNED_BASE_SHA" ]] || { echo "Could not restore the scanned base" >&2; exit 1; }
       - name: Set up Node
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.0.0
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version-file: .node-version
           cache: npm
