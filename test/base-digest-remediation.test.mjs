@@ -24,9 +24,9 @@ const currentConfigDigest = digest('e');
 const candidateConfigDigest = digest('f');
 const scannedBaseSha = '1'.repeat(40);
 const dockerfile = [
-  `FROM node:26-bookworm-slim@${currentDigest} AS dependencies`,
+  `FROM node:26-alpine3.23@${currentDigest} AS dependencies`,
   'RUN true',
-  `FROM node:26-bookworm-slim@${currentDigest} AS runtime`,
+  `FROM node:26-alpine3.23@${currentDigest} AS runtime`,
 ].join('\n');
 
 function index(descriptorDigest) {
@@ -74,7 +74,7 @@ function registryFetch({ tagDigest = candidateDigest } = {}) {
     if (reference === currentDigest) {
       return response(index(currentPlatformDigest), currentDigest, 'application/vnd.oci.image.index.v1+json');
     }
-    if (reference === '26-bookworm-slim') {
+    if (reference === '26-alpine3.23') {
       return response(index(tagDigest === currentDigest ? currentPlatformDigest : candidatePlatformDigest), tagDigest, 'application/vnd.oci.image.index.v1+json');
     }
     if (reference === currentPlatformDigest) {
@@ -165,7 +165,7 @@ test('validation workflow runs the complete Node suite before one separate image
 
 test('parses the actual pinned runtime tag and changes only its digest', () => {
   const parsed = parsePinnedNodeDockerfile(dockerfile);
-  assert.equal(parsed.tag, '26-bookworm-slim');
+  assert.equal(parsed.tag, '26-alpine3.23');
   assert.equal(parsed.digest, currentDigest);
   assert.equal(parsed.references.length, 2);
   const candidate = replacePinnedNodeDigest(dockerfile, currentDigest, candidateDigest);
@@ -175,7 +175,7 @@ test('parses the actual pinned runtime tag and changes only its digest', () => {
 
 test('rejects malformed Dockerfile and unapproved platform input', () => {
   assert.throws(
-    () => parsePinnedNodeDockerfile('FROM node:26-bookworm-slim AS runtime'),
+    () => parsePinnedNodeDockerfile('FROM node:26-alpine3.23 AS runtime'),
     /exact tag@sha256 digest/,
   );
   assert.throws(() => validateDeploymentPlatform('linux/arm64'), /explicit allowlisted value/);
@@ -234,11 +234,11 @@ test('PR evidence requires the scanned base and exact Dockerfile digest substitu
     source: {
       registry: 'registry-1.docker.io',
       repository: 'library/node',
-      tag: '26-bookworm-slim',
-      endpoint: 'https://registry-1.docker.io/v2/library/node/manifests/26-bookworm-slim',
+      tag: '26-alpine3.23',
+      endpoint: 'https://registry-1.docker.io/v2/library/node/manifests/26-alpine3.23',
     },
     platform: 'linux/amd64',
-    tag: '26-bookworm-slim',
+    tag: '26-alpine3.23',
     current: {
       digest: currentDigest,
       platformManifestDigest: currentPlatformDigest,
@@ -275,7 +275,7 @@ test('PR evidence requires the scanned base and exact Dockerfile digest substitu
       sha: scannedBaseSha,
     },
     labels: [{ name: 'base-digest-remediation' }],
-    title: 'chore: remediate node:26-bookworm-slim base digest',
+    title: 'chore: remediate node:26-alpine3.23 base digest',
     body: [
       currentDigest,
       candidateDigest,
@@ -371,6 +371,40 @@ test('remediation workflow accepts only scheduled trusted execution and never en
   const actions = jobSteps.filter((step) => step.uses);
   assert.ok(actions.length > 0);
   assert.equal(actions.every((step) => /^[^@\s]+@[a-f0-9]{40}$/.test(step.uses)), true);
+});
+
+test('Trivy workflows pin the verified installer and require every scan to succeed', async () => {
+  const root = resolve(import.meta.dirname, '..');
+  const [securitySource, remediationSource] = await Promise.all([
+    readFile(resolve(root, '.github/workflows/security-scan.yml'), 'utf8'),
+    readFile(resolve(root, '.github/workflows/base-digest-remediation.yml'), 'utf8'),
+  ]);
+  const workflows = [
+    ['security', parseWorkflow(securitySource), 2],
+    ['remediation', parseWorkflow(remediationSource), 2],
+  ];
+  const trivyAction = 'aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8';
+
+  for (const [name, workflow, expectedScans] of workflows) {
+    const scans = Object.values(workflow.jobs).flatMap((job) => job.steps ?? [])
+      .filter((step) => step.uses === trivyAction);
+    assert.equal(scans.length, expectedScans, `${name} workflow must retain every Trivy scan`);
+    for (const scan of scans) {
+      assert.equal(scan.with?.version, 'v0.73.0');
+      assert.equal(scan['continue-on-error'] ?? false, false, 'Trivy installation and scanning must fail the job');
+      assert.equal(scan.with?.scanners, 'vuln');
+      assert.equal(scan.with?.['ignore-unfixed'], 'false');
+    }
+  }
+
+  const securityScans = workflows[0][1].jobs.trivy.steps.filter((step) => step.uses === trivyAction);
+  assert.deepEqual(
+    securityScans.map((step) => [step.with?.['scan-type'], step.with?.['scan-ref'] ?? step.with?.['image-ref']]),
+    [
+      ['fs', '.'],
+      ['image', 'content-viewer:security-${{ github.sha }}'],
+    ],
+  );
 });
 
 test('rejects quoted and escaped scan permissions overrides without confusing quoted values', () => {

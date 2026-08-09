@@ -137,7 +137,7 @@ jobs:
           output: trivy-current.json
           exit-code: '0'
           ignore-unfixed: 'false'
-          version: v0.65.0
+          version: v0.73.0
       - name: Enforce current final-image exception policy
         run: >-
           node scripts/enforce-trivy-policy.mjs --scan image --input trivy-current.json
@@ -176,7 +176,7 @@ jobs:
           output: trivy-candidate.json
           exit-code: '0'
           ignore-unfixed: 'false'
-          version: v0.65.0
+          version: v0.73.0
       - name: Enforce candidate final-image exception policy
         run: >-
           node scripts/enforce-trivy-policy.mjs --scan image --input trivy-candidate.json
