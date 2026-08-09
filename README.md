@@ -4,8 +4,7 @@ Markdown and CSV content viewer for browsing, searching, and presenting document
 
 This repository includes:
 
-- `server.mjs` - standalone Node HTTP server for Docker.
-- `extension.mjs` - Copilot canvas extension source kept for side-panel usage.
+- `server.mjs` - Node HTTP server for the containerized web reader.
 - `theme.css` and `theme.json` - vendored shared theme standard from `mkronvold/themes`.
 - `Dockerfile` and `docker-compose.yml` - first container deployment target.
 

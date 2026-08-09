@@ -3,7 +3,6 @@ import { execFile } from "node:child_process";
 import { after, before, test } from "node:test";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 process.env.NODE_ENV = "test";
@@ -77,14 +76,6 @@ function markdownTableRenderer(viewer) {
         .join("\n");
     const inlineMarkdown = (value) => String(value).replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
     return Function("inlineMarkdown", `${source}\nreturn renderMarkdownTable;`)(inlineMarkdown);
-}
-
-function sharedSection(source, startMarker, endMarker) {
-    const start = source.indexOf(startMarker);
-    const end = source.indexOf(endMarker, start);
-    assert.notEqual(start, -1, `missing ${startMarker}`);
-    assert.notEqual(end, -1, `missing ${endMarker}`);
-    return source.slice(start, end);
 }
 
 before(async () => {
@@ -224,22 +215,4 @@ test("preserves Markdown table rendering through the shared table wrapper", asyn
     } finally {
         await server.close();
     }
-});
-
-test("keeps standalone and canvas CSV implementations aligned", async () => {
-    const serverPath = fileURLToPath(new URL("../server.mjs", import.meta.url));
-    const extensionPath = fileURLToPath(new URL("../extension.mjs", import.meta.url));
-    const [serverSource, extensionSource] = await Promise.all([
-        fs.readFile(serverPath, "utf8"),
-        fs.readFile(extensionPath, "utf8"),
-    ]);
-
-    assert.equal(
-        sharedSection(serverSource, "function documentFormat(filePath) {", "async function ensureIndex(state) {"),
-        sharedSection(extensionSource, "function documentFormat(filePath) {", "async function ensureIndex(state) {"),
-    );
-    assert.equal(
-        sharedSection(serverSource, "function renderTableRow(cells, cellTag, alignments, renderCell) {", "function indentWidth(value) {"),
-        sharedSection(extensionSource, "function renderTableRow(cells, cellTag, alignments, renderCell) {", "function indentWidth(value) {"),
-    );
 });
