@@ -36,7 +36,7 @@ jobs:
           ref: main
           persist-credentials: false
       - name: Set up Node
-        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.0.0
         with:
           node-version-file: .node-version
           cache: npm
@@ -96,7 +96,7 @@ jobs:
           [[ "$scanned_base" == "$origin_main" ]] || { echo "main changed while preparing the scan" >&2; exit 1; }
           echo "sha=$scanned_base" >> "$GITHUB_OUTPUT"
       - name: Set up Node
-        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.0.0
         with:
           node-version-file: .node-version
           cache: npm
@@ -196,7 +196,7 @@ jobs:
             >> "$GITHUB_OUTPUT"
       - name: Upload registry and scan evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: base-digest-remediation-evidence-${{ github.run_id }}
           path: |
@@ -243,7 +243,7 @@ jobs:
           git switch --detach "$SCANNED_BASE_SHA"
           [[ "$(git rev-parse HEAD)" == "$SCANNED_BASE_SHA" ]] || { echo "Could not restore the scanned base" >&2; exit 1; }
       - name: Set up Node
-        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.0.0
         with:
           node-version-file: .node-version
           cache: npm
