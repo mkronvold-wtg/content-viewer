@@ -3017,7 +3017,7 @@ function renderHtml(appState, initialView = {}) {
 
     function escapeCsvField(value) {
       const text = String(value ?? "");
-      return /[",\r\n]/.test(text) ? '"' + text.replaceAll('"', '""') + '"' : text;
+      return /[",\\r\\n]/.test(text) ? '"' + text.replaceAll('"', '""') + '"' : text;
     }
 
     function tableToCsv(table) {
@@ -3034,13 +3034,13 @@ function renderHtml(appState, initialView = {}) {
         }
         return rows
           .map((row) => row.map((cell) => escapeCsvField(cell)).join(","))
-          .join("\r\n");
+          .join("\\r\\n");
       }
       return Array.from(table.rows)
         .map((row) => Array.from(row.cells)
           .map((cell) => escapeCsvField(cell.innerText ?? cell.textContent ?? ""))
           .join(","))
-        .join("\r\n");
+        .join("\\r\\n");
     }
 
     function indentWidth(value) {

@@ -86,7 +86,7 @@ function tableCsvActions(viewer, navigator, document) {
     "navigator",
     "document",
     "statusElement",
-    `${source}\nreturn { tableToCsv, copyTableAsCsv, writeClipboardText };`,
+    `${source.replaceAll("\\\\", "\\")}\nreturn { tableToCsv, copyTableAsCsv, writeClipboardText };`,
   )(navigator, document, statusElement);
   return { ...actions, statusElement };
 }

@@ -55,6 +55,15 @@ function runtimeViewerSource(html) {
     return source;
 }
 
+async function assertValidClientSyntax(source) {
+    const clientPath = path.join(testRoot, "served-client.mjs");
+    await fs.writeFile(clientPath, source, "utf8");
+    await execFileAsync(process.execPath, ["--check", clientPath], {
+        cwd: testRoot,
+        windowsHide: true,
+    });
+}
+
 function csvRenderer(viewer) {
     const source = ["escapeHtml", "normalizeTableCells", "renderTableRow", "tableCopyButton", "renderTable", "parseCsv", "renderCsvTable"]
         .map((name) => viewerFunction(viewer, name))
@@ -137,6 +146,25 @@ test("keeps CSV direct routes and source identity within BASE_DIR", async () => 
         assert.equal(sourcePathRequest.response.status, 404);
         const traversal = await fetch(`${server.url}/content/%2E%2E%2Foutside%2Fhidden.csv`);
         assert.equal(traversal.status, 404);
+    } finally {
+        await server.close();
+    }
+});
+
+test("serves a syntax-valid initializing client for direct CSV routes", async () => {
+    const server = await startServerForTest([repository()]);
+    try {
+        const directRoute = await fetch(`${server.url}/content/report.csv?present=1`);
+        assert.equal(directRoute.status, 200);
+        const html = await directRoute.text();
+        assert.match(html, /const initialDocPath = "report\.csv";/);
+        const clientSource = runtimeViewerSource(html);
+        assert.match(
+            clientSource,
+            /async function initialize\(\) \{[\s\S]*?await openDocument\(initialDocPath, false, \{ skipHistory: true, presentMode: initialPresentMode \}\);/,
+        );
+        assert.match(clientSource, /initialize\(\);\s*$/);
+        await assertValidClientSyntax(clientSource);
     } finally {
         await server.close();
     }
