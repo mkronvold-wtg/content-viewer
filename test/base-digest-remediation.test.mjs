@@ -24,9 +24,9 @@ const currentConfigDigest = digest('e');
 const candidateConfigDigest = digest('f');
 const scannedBaseSha = '1'.repeat(40);
 const dockerfile = [
-  `FROM node:26-bookworm-slim@${currentDigest} AS dependencies`,
+  `FROM node:26-trixie-slim@${currentDigest} AS dependencies`,
   'RUN true',
-  `FROM node:26-bookworm-slim@${currentDigest} AS runtime`,
+  `FROM node:26-trixie-slim@${currentDigest} AS runtime`,
 ].join('\n');
 
 function index(descriptorDigest) {
@@ -74,7 +74,7 @@ function registryFetch({ tagDigest = candidateDigest } = {}) {
     if (reference === currentDigest) {
       return response(index(currentPlatformDigest), currentDigest, 'application/vnd.oci.image.index.v1+json');
     }
-    if (reference === '26-bookworm-slim') {
+    if (reference === '26-trixie-slim') {
       return response(index(tagDigest === currentDigest ? currentPlatformDigest : candidatePlatformDigest), tagDigest, 'application/vnd.oci.image.index.v1+json');
     }
     if (reference === currentPlatformDigest) {
@@ -165,7 +165,7 @@ test('validation workflow runs the complete Node suite before one separate image
 
 test('parses the actual pinned runtime tag and changes only its digest', () => {
   const parsed = parsePinnedNodeDockerfile(dockerfile);
-  assert.equal(parsed.tag, '26-bookworm-slim');
+  assert.equal(parsed.tag, '26-trixie-slim');
   assert.equal(parsed.digest, currentDigest);
   assert.equal(parsed.references.length, 2);
   const candidate = replacePinnedNodeDigest(dockerfile, currentDigest, candidateDigest);
@@ -175,7 +175,7 @@ test('parses the actual pinned runtime tag and changes only its digest', () => {
 
 test('rejects malformed Dockerfile and unapproved platform input', () => {
   assert.throws(
-    () => parsePinnedNodeDockerfile('FROM node:26-bookworm-slim AS runtime'),
+    () => parsePinnedNodeDockerfile('FROM node:26-trixie-slim AS runtime'),
     /exact tag@sha256 digest/,
   );
   assert.throws(() => validateDeploymentPlatform('linux/arm64'), /explicit allowlisted value/);
@@ -234,11 +234,11 @@ test('PR evidence requires the scanned base and exact Dockerfile digest substitu
     source: {
       registry: 'registry-1.docker.io',
       repository: 'library/node',
-      tag: '26-bookworm-slim',
-      endpoint: 'https://registry-1.docker.io/v2/library/node/manifests/26-bookworm-slim',
+      tag: '26-trixie-slim',
+      endpoint: 'https://registry-1.docker.io/v2/library/node/manifests/26-trixie-slim',
     },
     platform: 'linux/amd64',
-    tag: '26-bookworm-slim',
+    tag: '26-trixie-slim',
     current: {
       digest: currentDigest,
       platformManifestDigest: currentPlatformDigest,
@@ -275,7 +275,7 @@ test('PR evidence requires the scanned base and exact Dockerfile digest substitu
       sha: scannedBaseSha,
     },
     labels: [{ name: 'base-digest-remediation' }],
-    title: 'chore: remediate node:26-bookworm-slim base digest',
+    title: 'chore: remediate node:26-trixie-slim base digest',
     body: [
       currentDigest,
       candidateDigest,
