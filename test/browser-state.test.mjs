@@ -83,15 +83,10 @@ function resolveDocumentLinkPath(viewer, repos, currentDocPath, destination) {
 
 test("maps source-root document links into BASE_DIR display paths", async () => {
     const serverPath = fileURLToPath(new URL("../server.mjs", import.meta.url));
-    const extensionPath = fileURLToPath(new URL("../extension.mjs", import.meta.url));
-    const [serverSource, extensionSource] = await Promise.all([
-        fs.readFile(serverPath, "utf8"),
-        fs.readFile(extensionPath, "utf8"),
-    ]);
+    const serverSource = await fs.readFile(serverPath, "utf8");
     const viewer = viewerSource(serverSource);
     const repos = [{ slug: "content", baseDir: "docs" }];
 
-    assert.equal(viewer, viewerSource(extensionSource), "standalone and canvas viewer sources must stay in parity");
     assert.equal(resolveDocumentLinkPath(viewer, repos, "guide.md", "/docs/other.md"), "other.md");
     assert.equal(resolveDocumentLinkPath(viewer, repos, "nested/guide.md", "/docs/nested/other.md"), "nested/other.md");
     assert.equal(resolveDocumentLinkPath(viewer, repos, "guide.md", "/outside/other.md"), null);
@@ -114,21 +109,14 @@ after(async () => {
     await fs.rm(testRoot, { recursive: true, force: true });
 });
 
-test("persists presentation and search browser state in mirrored viewer sources", async () => {
+test("persists presentation and search browser state in the web reader", async () => {
     const serverPath = fileURLToPath(new URL("../server.mjs", import.meta.url));
-    const extensionPath = fileURLToPath(new URL("../extension.mjs", import.meta.url));
-    const [serverSource, extensionSource] = await Promise.all([
-        fs.readFile(serverPath, "utf8"),
-        fs.readFile(extensionPath, "utf8"),
-    ]);
+    const serverSource = await fs.readFile(serverPath, "utf8");
     const viewer = viewerSource(serverSource);
 
-    assert.equal(viewer, viewerSource(extensionSource), "standalone and canvas viewer sources must stay in parity");
     const presentRequestContract = /function hasPresentationRequest\(url\) \{\s+return url\.searchParams\.getAll\("present"\)\.length === 1 && url\.searchParams\.get\("present"\) === "1";\s+\}/;
     assert.match(serverSource, presentRequestContract);
-    assert.match(extensionSource, presentRequestContract);
     assert.match(serverSource, /presentMode: hasPresentationRequest\(url\)/);
-    assert.match(extensionSource, /presentMode: hasPresentationRequest\(url\)/);
     assert.match(viewer, /const currentUrl = new URL\(window\.location\.href\)/);
     assert.match(viewer, /currentUrl\.searchParams\.set\("present", "1"\)/);
     assert.match(viewer, /currentUrl\.searchParams\.delete\("present"\)/);
@@ -234,16 +222,11 @@ function evaluateNavigationPreviewFunctions(viewer, storedValue = null) {
     return { ...functions, values, attributes, activeClasses, navPreviewToggle, resultsElement };
 }
 
-test("persists the navigation result preview display mode in mirrored viewer sources", async () => {
+test("persists the navigation result preview display mode in the web reader", async () => {
     const serverPath = fileURLToPath(new URL("../server.mjs", import.meta.url));
-    const extensionPath = fileURLToPath(new URL("../extension.mjs", import.meta.url));
-    const [serverSource, extensionSource] = await Promise.all([
-        fs.readFile(serverPath, "utf8"),
-        fs.readFile(extensionPath, "utf8"),
-    ]);
+    const serverSource = await fs.readFile(serverPath, "utf8");
     const viewer = viewerSource(serverSource);
 
-    assert.equal(viewer, viewerSource(extensionSource), "standalone and canvas viewer sources must stay in parity");
     assert.match(viewer, /<button id="nav-preview-toggle" class="nav-preview-toggle" type="button" aria-label="Show title-only navigation results" aria-pressed="false" title="Show title-only navigation results">\s*<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">/);
     assert.match(viewer, /const navPreviewTitleOnlyStorageKey = "content-viewer-nav-title-only"/);
     assert.match(viewer, /setNavResultPreviewMode\(getStoredFlag\(navPreviewTitleOnlyStorageKey, false\)\)/);

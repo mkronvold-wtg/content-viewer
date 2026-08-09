@@ -10,7 +10,7 @@
     "start": "node server.mjs",
     "theme:update": "node scripts/update-theme.mjs",
     "build": "npm run check",
-    "check": "node --check server.mjs && node --check extension.mjs && node --check scripts/base-digest-remediation.mjs",
+    "check": "node --check server.mjs && node --check scripts/base-digest-remediation.mjs",
     "test": "npm run test:contracts && npm run test:browser-state && npm run test:base-directory-root && npm run test:csv && npm run test:table-controls && npm run test:security-exceptions && npm run test:base-digest-remediation",
     "test:base-directory-root": "node --test test/base-directory-root.test.mjs",
     "test:browser-state": "node --test test/browser-state.test.mjs",

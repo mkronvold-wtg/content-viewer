@@ -4,7 +4,6 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 const serverPath = fileURLToPath(new URL("../server.mjs", import.meta.url));
-const extensionPath = fileURLToPath(new URL("../extension.mjs", import.meta.url));
 
 function viewerSource(source) {
   const match = source.match(/function renderHtml\(appState, initialView = \{\}\) \{[\s\S]*?(?=\nasync function handleRequest)/);
@@ -42,14 +41,8 @@ function viewerFunction(viewer, name) {
   assert.fail(`could not find the end of ${name}`);
 }
 
-async function mirroredViewer() {
-  const [serverSource, extensionSource] = await Promise.all([
-    fs.readFile(serverPath, "utf8"),
-    fs.readFile(extensionPath, "utf8"),
-  ]);
-  const serverViewer = viewerSource(serverSource);
-  assert.equal(serverViewer, viewerSource(extensionSource), "standalone and canvas viewer sources must stay in parity");
-  return serverViewer;
+async function standaloneViewer() {
+  return viewerSource(await fs.readFile(serverPath, "utf8"));
 }
 
 function tableRenderers(viewer) {
@@ -119,8 +112,8 @@ function renderedCsvTable(html, visualRows) {
   };
 }
 
-test("keeps the 90 percent reader contract and intrinsic table layout in mirrored sources", async () => {
-  const viewer = await mirroredViewer();
+test("keeps the 90 percent reader contract and intrinsic table layout", async () => {
+  const viewer = await standaloneViewer();
 
   assert.match(viewer, /\.markdown \{\s+width: 90%;\s+max-width: none;\s+margin: 0 auto;/);
   assert.match(viewer, /body\.presenting \.markdown \{\s+width: 90%;\s+max-width: none;\s+margin: 0 auto;/);
@@ -143,7 +136,7 @@ test("keeps the 90 percent reader contract and intrinsic table layout in mirrore
 });
 
 test("renders Markdown and CSV tables through the same copy-button wrapper", async () => {
-  const viewer = await mirroredViewer();
+  const viewer = await standaloneViewer();
   const { renderMarkdownTable, renderCsvTable } = tableRenderers(viewer);
   const markdown = renderMarkdownTable("| Name | Value |\n", "| --- | --- |\n", ["| **Bold** | 42 |"]);
   const csv = renderCsvTable("Name,Value\r\nPlain,42\r\n");
@@ -162,7 +155,7 @@ test("renders Markdown and CSV tables through the same copy-button wrapper", asy
 });
 
 test("serializes Markdown tables from their visual text as RFC 4180 CSV", async () => {
-  const viewer = await mirroredViewer();
+  const viewer = await standaloneViewer();
   const { tableToCsv } = tableCsvActions(viewer, {}, {});
   const table = visualTable([
     ["Header", "Quote", "Comma", "LF", "CRLF", "Blank"],
@@ -176,7 +169,7 @@ test("serializes Markdown tables from their visual text as RFC 4180 CSV", async 
 });
 
 test("preserves parser CSV values across real rendered multiline cells", async () => {
-  const viewer = await mirroredViewer();
+  const viewer = await standaloneViewer();
   const { renderCsvTable } = tableRenderers(viewer);
   const { tableToCsv } = tableCsvActions(viewer, {}, {});
   const source = 'Name,Comment,Empty,Unicode\r\nMiyuki,"first line\r\nsecond line",,こんにちは\r\n';
@@ -193,7 +186,7 @@ test("preserves parser CSV values across real rendered multiline cells", async (
 });
 
 test("reports truthful table clipboard success and failure states", async () => {
-  const viewer = await mirroredViewer();
+  const viewer = await standaloneViewer();
   const table = visualTable([["Name"], ["Ada"]]);
   const wrapper = { querySelector: (selector) => selector === "table" ? table : null };
   const copied = [];
@@ -243,7 +236,7 @@ test("reports truthful table clipboard success and failure states", async () => 
 });
 
 test("delegates each table-copy click through the single document container listener", async () => {
-  const viewer = await mirroredViewer();
+  const viewer = await standaloneViewer();
   const source = viewerFunction(viewer, "handleDocumentContentClick");
   const handleDocumentContentClick = Function(`${source}\nreturn handleDocumentContentClick;`)();
   const wrapper = {};

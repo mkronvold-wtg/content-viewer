@@ -3,7 +3,6 @@ import { execFile } from "node:child_process";
 import { after, before, test } from "node:test";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 process.env.NODE_ENV = "test";
@@ -33,20 +32,6 @@ async function api(server, pathname) {
 async function startIndexedServer(baseDir) {
     const server = await startServerForTest([repository(baseDir)]);
     return server;
-}
-
-function sharedImplementation(source) {
-    return [
-        ["function normalizeBaseDir(value) {", "function repoTitleName(repo) {"],
-        ["async function buildIndex(repo) {", "function sendJson(res, status, value) {"],
-        ["function parseRepoRoute(appState, pathname) {", "function hasPresentationRequest(url) {"],
-    ].map(([startMarker, endMarker]) => {
-        const start = source.indexOf(startMarker);
-        const end = source.indexOf(endMarker, start);
-        assert.notEqual(start, -1, "expected mirrored base-directory implementation");
-        assert.notEqual(end, -1, "expected mirrored base-directory implementation boundary");
-        return source.slice(start, end);
-    }).join("\n");
 }
 
 before(async () => {
@@ -179,16 +164,4 @@ test("rejects traversal and source-path document access outside the enforced roo
     } finally {
         await server.close();
     }
-});
-
-test("keeps standalone and canvas base-directory implementations aligned", async () => {
-    const serverPath = fileURLToPath(new URL("../server.mjs", import.meta.url));
-    const extensionPath = fileURLToPath(new URL("../extension.mjs", import.meta.url));
-    const [serverSource, extensionSource] = await Promise.all([
-        fs.readFile(serverPath, "utf8"),
-        fs.readFile(extensionPath, "utf8"),
-    ]);
-
-    assert.equal(sharedImplementation(serverSource), sharedImplementation(extensionSource));
-    assert.match(extensionSource, /baseDir: CONFIGURED_REPOS\[0\]\.baseDir/);
 });
