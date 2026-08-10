@@ -222,6 +222,30 @@ function evaluateNavigationPreviewFunctions(viewer, storedValue = null) {
     return { ...functions, values, attributes, activeClasses, navPreviewToggle, resultsElement };
 }
 
+function evaluateNavigationResultRenderer(viewer) {
+    const source = ["escapeHtml", "highlightText", "displayResultPath", "documentTypePill", "navigationResultHtml"]
+        .map((name) => viewerFunction(viewer, name))
+        .join("\n");
+    return Function("highlightTokens", `${source}\nreturn navigationResultHtml;`)([]);
+}
+
+test("renders Markdown and CSV type pills in navigation entries", async () => {
+    const serverPath = fileURLToPath(new URL("../server.mjs", import.meta.url));
+    const serverSource = await fs.readFile(serverPath, "utf8");
+    const viewer = viewerSource(serverSource);
+    const renderNavigationResult = evaluateNavigationResultRenderer(viewer);
+
+    const markdown = renderNavigationResult({ title: "Guide", path: "guide.md", format: "markdown", snippet: "" });
+    assert.match(markdown, /<span class="result-title"><span class="result-title-text">Guide<\/span><span class="document-type-pill" aria-label="Markdown document">\(md\)<\/span><\/span>/);
+    assert.match(markdown, /<span class="result-path">Repository root<\/span>/);
+
+    const csv = renderNavigationResult({ title: "Report", path: "reports/report.csv", format: "csv", snippet: "" });
+    assert.match(csv, /<span class="result-title"><span class="result-title-text">Report<\/span><span class="document-type-pill" aria-label="CSV document">\(csv\)<\/span><\/span>/);
+    assert.match(csv, /<span class="result-path">reports<\/span>/);
+
+    assert.match(viewer, /\.document-type-pill \{\s+flex: 0 0 auto;\s+padding: 1px 5px;\s+border: 1px solid color-mix\(in srgb, var\(--theme-border\) 80%, transparent\);/);
+});
+
 test("persists the navigation result preview display mode in the web reader", async () => {
     const serverPath = fileURLToPath(new URL("../server.mjs", import.meta.url));
     const serverSource = await fs.readFile(serverPath, "utf8");
