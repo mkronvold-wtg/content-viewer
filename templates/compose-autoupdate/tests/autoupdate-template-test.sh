@@ -105,12 +105,25 @@ case "$1" in
     esac
     ;;
   buildx)
-    [[ "$2" == version ]] && exit 0
-    if [[ "$*" == *"org.opencontainers.image.revision"* ]]; then
+    [[ "${2:-}" == version ]] && exit 0
+    format=""
+    for ((index = 1; index < $#; index++)); do
+      if [[ "${!index}" == --format ]]; then
+        next_index=$((index + 1))
+        format="${!next_index}"
+        break
+      fi
+    done
+    if [[ -n "${MOCK_BUILDX_FORMAT_LOG:-}" ]]; then
+      printf '%s\n' "$format" >>"$MOCK_BUILDX_FORMAT_LOG"
+    fi
+    if [[ "${MOCK_BUILDX_014_FORMAT_BUG:-0}" == 1 && "$format" == '{{.Manifest.Digest}}' ]]; then
+      printf '%s\n' "Name: ${*: -1}" "MediaType: application/vnd.oci.image.manifest.v1+json"
+    elif [[ "$format" == *"org.opencontainers.image.revision"* ]]; then
       printf '%s\n' "${MOCK_REVISION:-deadbeef}"
-    elif [[ "$*" == *".Manifest.MediaType"* ]]; then
+    elif [[ "$format" == *".Manifest.MediaType"* ]]; then
       printf '%s\n' "application/vnd.oci.image.index.v1+json"
-    elif [[ "$*" == *".Image.OS"* ]]; then
+    elif [[ "$format" == *".Image.OS"* ]]; then
       printf '%s\n' "linux/amd64"
     else
       digest "${MOCK_REMOTE_DIGEST_NUMBER:-2}"
@@ -226,6 +239,13 @@ make_fixture
 MOCK_LOCAL_DIGEST_NUMBER=2 assert_status 10 run_template --once
 assert_contains "status=noop reason=all-allowlisted-services-match-remote" "${TEST_DIR}/output"
 pass "accepts the explicitly configured dev tag and returns the documented no-op status"
+
+make_fixture
+buildx_format_log="${TEST_DIR}/buildx-formats"
+MOCK_BUILDX_014_FORMAT_BUG=1 MOCK_BUILDX_FORMAT_LOG="$buildx_format_log" assert_status 0 run_template --dry-run
+assert_contains '{{printf "%s" .Manifest.Digest}}' "$buildx_format_log"
+assert_not_contains '{{.Manifest.Digest}}' "$buildx_format_log"
+pass "uses a stringify-safe Buildx manifest digest template compatible with Buildx 0.14"
 
 make_fixture
 cat >>"${TEST_DIR}/autoupdate.conf" <<'EOF'
