@@ -9,16 +9,16 @@ import { parseDocument } from "yaml";
 
 const root = resolve(process.cwd());
 const execFileAsync = promisify(execFile);
-const canonicalRevision = "f0b62cc1ccf52e64e8de222a9159c99635444dd3";
+const canonicalRevision = "c5ce46784499014e7430c5f4a1f10489dcc92bd9";
 const templateHashes = {
-  "README.md": "5e6d50ec31dacdd7672f5b085b61dfe91b5582a1e9061f44f670443d25b72b3f",
+  "README.md": "b9e8ee384eae3eb2fdbbf6e0cfd579f70c60c65cc6fd00bf5777109871eb776d",
   "autoupdate.artifactory-repo-ops.conf.example": "4e0b69ade605b12235ab1968ec61a17876a56a32d155d10be982b89913ee4cc2",
   "autoupdate.conf.example": "7c966929936c9ea68c3b43e1f4cf0dd0ad9dbd67e0763605a7776b088ec512b4",
-  "autoupdate.sh": "2c68ec79c9c564228ee230455f21c2cfb6ef68ac4e1588411deb374d69a481c5",
+  "autoupdate.sh": "7fe4fe5fbfc78055fcd028e984e4b94bc681478e391af7dcdc42346e6e83b2a1",
   "repo-ops-mapping.txt.example": "d0c6f9d37e9c753d502bcb6339da8e576875d37ffefb7c200c43bc010a1b3bc5",
   "systemd/autoupdate.service": "9e990712491eefa366e702faaf77ee21f9c1b7bb7ea45b32af39c309756ab7b4",
   "systemd/autoupdate.timer": "c288fee94dcf0cf0be46680a01717e18f166cd130ad9ccaa725d4d778e2f90ed",
-  "tests/autoupdate-template-test.sh": "d663d5ba83c2224a0a70dd8c3ed256e571647d33ae4afb444446639043dc4208",
+  "tests/autoupdate-template-test.sh": "4babc4811625334621355fc08b40f51818c0dd9b8e9c5b3630337723e009da78",
 };
 
 async function source(pathname) {

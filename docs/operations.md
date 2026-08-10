@@ -104,8 +104,8 @@ Its required Dockerhost project is `content-viewer`, which owns
 `content-viewer_content-viewer-content`.
 
 The reusable updater is vendored without modification from
-[`mkronvold/techstack`](https://github.com/mkronvold/techstack/tree/f0b62cc1ccf52e64e8de222a9159c99635444dd3/templates/compose-autoupdate)
-at `f0b62cc1ccf52e64e8de222a9159c99635444dd3`, from
+[`mkronvold/techstack`](https://github.com/mkronvold/techstack/tree/c5ce46784499014e7430c5f4a1f10489dcc92bd9/templates/compose-autoupdate)
+at `c5ce46784499014e7430c5f4a1f10489dcc92bd9`, from
 `templates/compose-autoupdate` on its synchronized `main` branch. The
 `test/dev-autoupdate.test.mjs` integrity check records every vendored file's
 exact SHA-256. Future updates must copy a reviewed template revision and update this

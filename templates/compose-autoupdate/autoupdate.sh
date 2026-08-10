@@ -354,7 +354,7 @@ digest_for_image_id() {
 remote_manifest_digest() {
   local image_reference="$1"
   local digest
-  digest="$(DOCKER_DEFAULT_PLATFORM="$AUTOUPDATE_TARGET_PLATFORM" docker buildx imagetools inspect --format '{{.Manifest.Digest}}' "$image_reference")" \
+  digest="$(DOCKER_DEFAULT_PLATFORM="$AUTOUPDATE_TARGET_PLATFORM" docker buildx imagetools inspect --format '{{printf "%s" .Manifest.Digest}}' "$image_reference")" \
     || die "registry or manifest lookup failed for $image_reference"
   digest="$(trim "$digest")"
   is_digest "$digest" || die "registry did not return a manifest digest for $image_reference"
@@ -365,7 +365,7 @@ remote_oci_revision() {
   local image_reference="$1"
   local revision
   revision="$(DOCKER_DEFAULT_PLATFORM="$AUTOUPDATE_TARGET_PLATFORM" docker buildx imagetools inspect \
-    --format '{{ index .Image.Config.Labels "org.opencontainers.image.revision" }}' "$image_reference")" \
+    --format '{{with index .Image.Config.Labels "org.opencontainers.image.revision"}}{{printf "%s" .}}{{end}}' "$image_reference")" \
     || die "could not read OCI revision for $image_reference"
   revision="$(trim "$revision")"
   [[ -n "$revision" && "$revision" != "<no value>" ]] || die "image lacks org.opencontainers.image.revision: $image_reference"
@@ -374,7 +374,7 @@ remote_oci_revision() {
 
 linux_amd64_manifest_digest() {
   local media_type platform_digest direct_platform
-  media_type="$(docker buildx imagetools inspect --format '{{.Manifest.MediaType}}' "$1")" \
+  media_type="$(docker buildx imagetools inspect --format '{{printf "%s" .Manifest.MediaType}}' "$1")" \
     || die "could not inspect manifest media type for $1"
   media_type="$(trim "$media_type")"
 
@@ -382,7 +382,7 @@ linux_amd64_manifest_digest() {
     *manifest.list*|*image.index*)
       ;;
     *)
-      direct_platform="$(docker buildx imagetools inspect --format '{{.Image.OS}}/{{.Image.Architecture}}' "$1")" \
+      direct_platform="$(docker buildx imagetools inspect --format '{{printf "%s/%s" .Image.OS .Image.Architecture}}' "$1")" \
         || die "could not inspect image platform for $1"
       [[ "$(trim "$direct_platform")" == "linux/amd64" ]] \
         || die "image does not provide a Linux/amd64 manifest: $1"
@@ -392,7 +392,7 @@ linux_amd64_manifest_digest() {
   esac
 
   platform_digest="$(docker buildx imagetools inspect \
-    --format '{{range .Manifest.Manifests}}{{if and (eq .Platform.OS "linux") (eq .Platform.Architecture "amd64")}}{{.Digest}}{{end}}{{end}}' \
+    --format '{{range .Manifest.Manifests}}{{if and (eq .Platform.OS "linux") (eq .Platform.Architecture "amd64")}}{{printf "%s" .Digest}}{{end}}{{end}}' \
     "$1")" || die "could not inspect Linux/amd64 manifest for $1"
   platform_digest="$(trim "$platform_digest")"
   if [[ -n "$platform_digest" ]]; then

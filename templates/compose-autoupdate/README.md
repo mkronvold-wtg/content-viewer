@@ -100,6 +100,10 @@ successful deployment is never pruned. No rollback tag is removed until health
 has succeeded and the replacement record is durable. The updater restores the
 prior tags plus the app rollback path when either command fails.
 
+Buildx scalar fields are rendered with explicit string templates, so manifest
+digest resolution remains machine-readable on Buildx 0.14+ rather than falling
+back to the human-readable inspection report.
+
 Once prior image tags are retained, the updater arms bounded `TERM`, `INT`, and
 `HUP` handling. An interruption ignores repeated signals, restores prior tags,
 and invokes the same allowlisted rollback/health path before exiting with the
