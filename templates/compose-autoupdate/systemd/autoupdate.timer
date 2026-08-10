@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Content viewer allowlisted Compose image auto-update every 30 minutes
+
+[Timer]
+OnCalendar=*:0/30
+Persistent=true
+RandomizedDelaySec=5m
+Unit=autoupdate.service
+
+[Install]
+WantedBy=timers.target
