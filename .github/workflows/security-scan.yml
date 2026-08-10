@@ -42,7 +42,7 @@ jobs:
           restore-keys: |
             trivy-${{ runner.os }}-
       - name: Scan filesystem and lockfile with Trivy
-        uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # v0.33.1
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: fs
           scan-ref: .
@@ -63,7 +63,7 @@ jobs:
           case "$digest" in sha256:[0-9a-f][0-9a-f]*) ;; *) echo "Invalid image digest: $digest" >&2; exit 1 ;; esac
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
       - name: Scan final runtime image with Trivy
-        uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # v0.33.1
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
           image-ref: content-viewer:security-${{ github.sha }}
