@@ -32,6 +32,7 @@ test('development image publishing is trusted-main-only, pinned, and least privi
   assert.match(publish.if, /github\.event\.repository\.fork == false/);
   assert.match(publish.if, /github\.ref == 'refs\/heads\/main'/);
   assert.match(publish.if, /github\.ref_protected == true/);
+  assert.equal(publish['runs-on'], 'ubuntu-latest');
   assert.deepEqual(publish.permissions, {
     contents: 'read',
     packages: 'write',
