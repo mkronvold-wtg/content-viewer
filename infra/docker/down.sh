@@ -2,7 +2,10 @@
 
 set -Eeuo pipefail
 
-readonly -a COMPOSE_ARGS=(--env-file .env -f docker-compose.npm.yml)
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/compose-project.sh"
+validate_project_name
+readonly -a COMPOSE_ARGS=(-p "$PROJECT" --env-file .env -f docker-compose.npm.yml)
 
 # Persistent content lives in the named volume. This wrapper always preserves it.
 for argument in "$@"; do

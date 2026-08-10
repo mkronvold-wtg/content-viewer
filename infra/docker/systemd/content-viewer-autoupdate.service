@@ -9,7 +9,7 @@ SuccessExitStatus=10
 TimeoutStopSec=2min
 WorkingDirectory=%h/content-viewer
 Environment=HOME=%h
-ExecStart=%h/content-viewer/templates/compose-autoupdate/autoupdate.sh --config %h/.config/content-viewer/autoupdate.conf --once
+ExecStart=%h/content-viewer/infra/docker/autoupdate.sh --config %h/.config/content-viewer/autoupdate.conf --once
 
 NoNewPrivileges=true
 PrivateTmp=true

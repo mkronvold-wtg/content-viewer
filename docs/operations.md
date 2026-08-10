@@ -25,22 +25,24 @@ repository was run against a deployment target.
 | Dockerhost behind NPM/proxy | `docker-compose.npm.yml` and `infra/docker/up.sh` | No host port is published by this file. The service is reachable on the external Compose network `npm-proxy` as `content-viewer:8080`. The Compose target is image-only and requires `CONTENT_VIEWER_IMAGE`; `up.sh` is the only repository restart path and never builds or removes the persistent volume. |
 
 The logical volume declaration is `content-viewer-content` in both Compose
-files. Because neither file sets a top-level Compose `name`, the physical
-volume name is project-scoped and must be discovered on the dockerhost rather
-than guessed from the logical name.
+files. The discovered Dockerhost project is `content-viewer`, so its persistent
+physical volume is `content-viewer_content-viewer-content`. Every Dockerhost
+command must retain that project name; using the repository directory or a
+different implicit project would create a second volume.
 
 **Deployment-only operator action:** the dockerhost owner must preserve the
-existing Compose project identity when deploying from the approved repository
-directory. It must match the project that owns the physical content volume; do
-not guess it from the logical `content-viewer-content` declaration. The
-image-only wrapper is:
+existing `content-viewer` Compose project identity when deploying from the
+approved repository directory. The image-only wrapper requires that explicit
+value:
 
 ```sh
-./infra/docker/up.sh --services content-viewer
+AUTOUPDATE_PROJECT_NAME=content-viewer ./infra/docker/up.sh --services content-viewer
 ```
 
-This is an operator procedure, not a claim that the repository knows the
-current project or deployment directory.
+The wrappers pass `-p "$PROJECT"` to Docker Compose. The updater wrapper
+validates the same value and exports Compose's standard
+`COMPOSE_PROJECT_NAME=content-viewer` setting before invoking the unchanged
+canonical vendor, so its generated Compose calls use the same project.
 
 ## Pending baseline evidence
 
@@ -70,9 +72,9 @@ volume as production data.
 
 1. **Never run `docker compose down -v`** for either deployment target. The
    `-v` option removes named volumes and can destroy the content clone.
-2. Identify the actual project and physical mounted volume using the
-   inspection action in the evidence table. Do not infer either from
-   `content-viewer-content` alone.
+2. Confirm that the actual project is `content-viewer` and the mounted volume
+   is `content-viewer_content-viewer-content` using the inspection action in
+   the evidence table. Refuse the cutover if either differs.
 3. Before a runtime change, the dockerhost owner must make a restorable backup
    of that physical volume with an approved host backup procedure. Record the
    archive or snapshot identifier, source volume, creation time, checksum or
@@ -98,6 +100,8 @@ it is not installed by this change, is not a production promotion mechanism,
 and has no Artifactory configuration. The Dockerhost target accepts only
 `ghcr.io/mkronvold-wtg/content-viewer:dev` on `linux/amd64`. The updater
 rejects `latest`, unrecognized rendered images, and immutable digest pins.
+Its required Dockerhost project is `content-viewer`, which owns
+`content-viewer_content-viewer-content`.
 
 The reusable updater is vendored without modification from
 [`mkronvold/techstack`](https://github.com/mkronvold/techstack/tree/8303ab1a7aaf87a3b2409e4fb9bd804a265746a6/templates/compose-autoupdate)
@@ -127,27 +131,53 @@ Before enabling a timer, the Dockerhost operator must:
    and never runs `docker login`.
 5. Copy `infra/docker/content-viewer-autoupdate.conf.example` to
    `~/.config/content-viewer/autoupdate.conf`, retain the exact allowlist, and
-   restrict it to mode `0600`.
+   restrict it to mode `0600`. Its required
+   `AUTOUPDATE_PROJECT_NAME=content-viewer` value validates the Dockerhost
+   project and exports `COMPOSE_PROJECT_NAME` for canonical updater calls.
 
 The config uses `docker-compose.npm.yml` and `.env`, permits only the
 `content-viewer` service, and calls the exact vendored
-`templates/compose-autoupdate/autoupdate.sh` entrypoint. `up.sh` is the only
-repository restart path. It recreates that one service with `--no-build` and
-`--no-deps`; the updater itself handles the approved image acquisition and
-rollback tags. It neither builds nor removes the named volume.
+`templates/compose-autoupdate/autoupdate.sh` through the validated
+`infra/docker/autoupdate.sh` entrypoint. `up.sh` is the only repository restart
+path. It recreates that one service with `--no-build` and `--no-deps`; the
+updater itself handles the approved image acquisition and rollback tags. It
+neither builds nor removes the named volume.
 
-Run the no-Docker-daemon template tests and the deployment-config dry run
-before enabling the timer:
+### First image-only cutover (one time)
+
+The currently deployed build-origin image has no GHCR `RepoDigest`, so an
+updater `--dry-run` **must not** be the first image-only action. After the
+copied-volume rehearsal and the required host preparation above, run this
+one-time controlled bootstrap from the deployment checkout:
 
 ```sh
 bash templates/compose-autoupdate/tests/autoupdate-template-test.sh
-templates/compose-autoupdate/autoupdate.sh --config ~/.config/content-viewer/autoupdate.conf --dry-run
+./infra/docker/bootstrap-ghcr-dev.sh --config ~/.config/content-viewer/autoupdate.conf
+```
+
+The bootstrap validates `AUTOUPDATE_PROJECT_NAME=content-viewer`, confirms the
+mounted volume is `content-viewer_content-viewer-content`, tags the current
+running image as the configured
+`content-viewer-bootstrap-rollback:pre-ghcr-dev` rollback reference, pulls and
+recreates only `content-viewer` with the allowlisted GHCR image, then verifies
+the in-container health endpoint and
+`https://kpe-content.dev.e2open.com/`. It atomically writes a host-local
+bootstrap record only after those checks pass, refuses a second bootstrap, and
+restores the retained pre-GHCR image if the candidate fails. It never uses
+`down`, `down -v`, or a build.
+
+Only after that successful bootstrap, run the updater dry run using the
+validated entrypoint:
+
+```sh
+./infra/docker/autoupdate.sh --config ~/.config/content-viewer/autoupdate.conf --dry-run
 ```
 
 ### User timer installation, disablement, and rollback
 
-Only after the copied-volume rehearsal succeeds, enable lingering for the
-deployment user so the user timer survives logout and boot:
+Only after the copied-volume rehearsal, one-time bootstrap, and updater dry
+run succeed, enable lingering for the deployment user so the user timer
+survives logout and boot:
 
 ```sh
 sudo loginctl enable-linger <deployment-user>
@@ -180,13 +210,14 @@ a manual recovery, disable the timer first and restore the approved local image
 tag using the recorded update evidence; then run only:
 
 ```sh
-AUTOUPDATE_ROLLBACK=1 AUTOUPDATE_SERVICES=content-viewer ./infra/docker/up.sh --services content-viewer
-AUTOUPDATE_ROLLBACK=1 AUTOUPDATE_SERVICES=content-viewer ./infra/docker/healthcheck.sh --services content-viewer
+AUTOUPDATE_PROJECT_NAME=content-viewer AUTOUPDATE_ROLLBACK=1 AUTOUPDATE_SERVICES=content-viewer ./infra/docker/up.sh --services content-viewer
+AUTOUPDATE_PROJECT_NAME=content-viewer AUTOUPDATE_ROLLBACK=1 AUTOUPDATE_SERVICES=content-viewer ./infra/docker/healthcheck.sh --services content-viewer
 ```
 
-Use `./infra/docker/down.sh` only to stop the Compose target. It rejects
-`-v`/`--volumes`, and **never run `docker compose down -v`**: the persistent
-content clone volume must survive both update and rollback.
+Use `AUTOUPDATE_PROJECT_NAME=content-viewer ./infra/docker/down.sh` only to
+stop the Compose target. It rejects `-v`/`--volumes`, and **never run `docker
+compose down -v`**: the persistent content clone volume must survive both
+update and rollback.
 
 ## Route and mutation matrix
 

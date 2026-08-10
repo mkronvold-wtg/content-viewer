@@ -4,6 +4,11 @@
 AUTOUPDATE_WORKDIR=.
 AUTOUPDATE_COMPOSE_FILES="docker-compose.npm.yml"
 AUTOUPDATE_COMPOSE_ENV_FILES=".env"
+# This is the discovered Dockerhost project. It owns
+# content-viewer_content-viewer-content and must not be changed.
+AUTOUPDATE_PROJECT_NAME=content-viewer
+export AUTOUPDATE_PROJECT_NAME
+export COMPOSE_PROJECT_NAME="$AUTOUPDATE_PROJECT_NAME"
 
 AUTOUPDATE_ALLOWED_SERVICES="content-viewer"
 AUTOUPDATE_ALLOWED_IMAGES="
@@ -21,3 +26,9 @@ AUTOUPDATE_LOCK_PATH="${HOME}/.local/state/content-viewer/autoupdate.lock"
 AUTOUPDATE_DIGEST_RECORD_PATH="${HOME}/.local/state/content-viewer/autoupdate-digests.txt"
 AUTOUPDATE_ROLLBACK_IMAGE_PREFIX=autoupdate-rollback/content-viewer
 AUTOUPDATE_INTERVAL_SECONDS=0
+
+# One-time first image-only cutover state. The bootstrap script refuses to run
+# again after atomically recording this retained local rollback reference.
+AUTOUPDATE_BOOTSTRAP_ROLLBACK_IMAGE=content-viewer-bootstrap-rollback:pre-ghcr-dev
+AUTOUPDATE_BOOTSTRAP_RECORD_PATH="${HOME}/.local/state/content-viewer/bootstrap-ghcr-dev.txt"
+AUTOUPDATE_BOOTSTRAP_PUBLIC_URL=https://kpe-content.dev.e2open.com/
