@@ -25,6 +25,9 @@ AUTOUPDATE_ROLLBACK_COMMAND=./infra/docker/up.sh
 AUTOUPDATE_LOCK_PATH="${HOME}/.local/state/content-viewer/autoupdate.lock"
 AUTOUPDATE_DIGEST_RECORD_PATH="${HOME}/.local/state/content-viewer/autoupdate-digests.txt"
 AUTOUPDATE_ROLLBACK_IMAGE_PREFIX=autoupdate-rollback/content-viewer
+# Retain the recorded prior image and a bounded history. The canonical updater
+# rejects values outside the integer range 1 through 10 before Docker runs.
+AUTOUPDATE_ROLLBACK_IMAGE_RETENTION=3
 AUTOUPDATE_INTERVAL_SECONDS=0
 
 # One-time first image-only cutover state. The bootstrap script refuses to run

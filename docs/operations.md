@@ -104,11 +104,11 @@ Its required Dockerhost project is `content-viewer`, which owns
 `content-viewer_content-viewer-content`.
 
 The reusable updater is vendored without modification from
-[`mkronvold/techstack`](https://github.com/mkronvold/techstack/tree/8303ab1a7aaf87a3b2409e4fb9bd804a265746a6/templates/compose-autoupdate)
-at `8303ab1a7aaf87a3b2409e4fb9bd804a265746a6`, from
+[`mkronvold/techstack`](https://github.com/mkronvold/techstack/tree/f0b62cc1ccf52e64e8de222a9159c99635444dd3/templates/compose-autoupdate)
+at `f0b62cc1ccf52e64e8de222a9159c99635444dd3`, from
 `templates/compose-autoupdate` on its synchronized `main` branch. The
 `test/dev-autoupdate.test.mjs` integrity check records every vendored file's
-SHA-256. Future updates must copy a reviewed template revision and update this
+exact SHA-256. Future updates must copy a reviewed template revision and update this
 provenance and its test together; do not edit its safety logic locally.
 
 ### Required host preparation
@@ -142,6 +142,14 @@ The config uses `docker-compose.npm.yml` and `.env`, permits only the
 path. It recreates that one service with `--no-build` and `--no-deps`; the
 updater itself handles the approved image acquisition and rollback tags. It
 neither builds nor removes the named volume.
+
+The required `AUTOUPDATE_ROLLBACK_IMAGE_RETENTION=3` bounds local, timestamped
+rollback tags to the current recorded prior image plus a small retained history.
+The canonical updater accepts only integers from `1` through `10`; invalid
+configuration fails before Docker is invoked. It prunes only after a candidate
+passes health validation and the replacement digest record is atomically
+durable, and never prunes the currently recorded prior image. Failed or
+interrupted candidates retain usable rollback tags.
 
 ### First image-only cutover (one time)
 

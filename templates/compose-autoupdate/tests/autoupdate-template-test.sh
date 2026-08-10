@@ -40,6 +40,14 @@ assert_contains() {
   grep -F -- "$expected" "$file" >/dev/null || fail "expected '$expected' in $file"
 }
 
+assert_not_contains() {
+  local unexpected="$1"
+  local file="$2"
+  if grep -F -- "$unexpected" "$file" >/dev/null; then
+    fail "did not expect '$unexpected' in $file"
+  fi
+}
+
 make_fixture() {
   TEST_DIR="$(mktemp -d "${TMP_ROOT}/case.XXXXXX")"
   APP_DIR="${TEST_DIR}/app"
@@ -128,7 +136,25 @@ case "$1" in
           printf '\n'
         fi
         ;;
-      tag) printf 'image-tag\n' >>"$ACTION_LOG" ;;
+      tag)
+        printf 'image-tag %s\n' "$4" >>"$ACTION_LOG"
+        if [[ -n "${MOCK_ROLLBACK_TAGS_FILE:-}" && "$4" == autoupdate-rollback/* ]]; then
+          printf '%s\n' "$4" >>"$MOCK_ROLLBACK_TAGS_FILE"
+        fi
+        ;;
+      ls)
+        if [[ -n "${MOCK_ROLLBACK_TAGS_FILE:-}" && -f "$MOCK_ROLLBACK_TAGS_FILE" ]]; then
+          cat "$MOCK_ROLLBACK_TAGS_FILE"
+        fi
+        ;;
+      rm)
+        printf 'image-rm %s\n' "$3" >>"$ACTION_LOG"
+        if [[ -n "${MOCK_ROLLBACK_TAGS_FILE:-}" && -f "$MOCK_ROLLBACK_TAGS_FILE" ]]; then
+          temporary_tags="$(mktemp "${MOCK_ROLLBACK_TAGS_FILE}.tmp.XXXXXX")"
+          grep -Fvx -- "$3" "$MOCK_ROLLBACK_TAGS_FILE" >"$temporary_tags" || true
+          mv -- "$temporary_tags" "$MOCK_ROLLBACK_TAGS_FILE"
+        fi
+        ;;
     esac
     ;;
   *) exit 0 ;;
@@ -269,7 +295,53 @@ MOCK_HEALTH_FAIL=1 assert_status 1 run_template --once
 assert_contains "up rollback=0 services=api platform=linux/amd64" "$ACTION_LOG"
 assert_contains "up rollback=1 services=api" "$ACTION_LOG"
 assert_contains "image-tag" "$ACTION_LOG"
+assert_not_contains "image-rm" "$ACTION_LOG"
 pass "health failure restores prior image tags and invokes rollback"
+
+make_fixture
+rollback_tags_file="${TEST_DIR}/rollback-tags"
+printf '%s\n' \
+  'autoupdate-rollback/example/api:20240101T000000Z' \
+  >"$rollback_tags_file"
+printf '\nAUTOUPDATE_ROLLBACK_IMAGE_RETENTION=1\n' >>"${TEST_DIR}/autoupdate.conf"
+MOCK_ROLLBACK_TAGS_FILE="$rollback_tags_file" assert_status 0 run_template --once
+current_prior_tag="$(awk -F'|' 'NR == 2 { print $6 }' "${TEST_DIR}/state/digests.txt")"
+[[ -n "$current_prior_tag" ]] || fail "expected the deployment record to retain a prior tag"
+assert_contains "$current_prior_tag" "$rollback_tags_file"
+assert_not_contains "image-rm $current_prior_tag" "$ACTION_LOG"
+assert_contains "image-rm autoupdate-rollback/example/api:20240101T000000Z" "$ACTION_LOG"
+pass "retains the currently recorded prior image even at retention one"
+
+make_fixture
+rollback_tags_file="${TEST_DIR}/rollback-tags"
+printf '%s\n' \
+  'autoupdate-rollback/example/api:20240101T000000Z' \
+  'autoupdate-rollback/example/api:20240201T000000Z' \
+  'autoupdate-rollback/example/api:20240301T000000Z' \
+  >"$rollback_tags_file"
+MOCK_ROLLBACK_TAGS_FILE="$rollback_tags_file" assert_status 0 run_template --once
+assert_contains "image-rm autoupdate-rollback/example/api:20240101T000000Z" "$ACTION_LOG"
+assert_not_contains "image-rm autoupdate-rollback/example/api:20240201T000000Z" "$ACTION_LOG"
+assert_not_contains "image-rm autoupdate-rollback/example/api:20240301T000000Z" "$ACTION_LOG"
+pass "prunes only superseded rollback tags after successful health validation"
+
+make_fixture
+rollback_tags_file="${TEST_DIR}/rollback-tags"
+printf '%s\n' \
+  'autoupdate-rollback/example/api:20240101T000000Z' \
+  'autoupdate-rollback/example/api:20240201T000000Z' \
+  'autoupdate-rollback/example/api:20240301T000000Z' \
+  >"$rollback_tags_file"
+MOCK_ROLLBACK_TAGS_FILE="$rollback_tags_file" MOCK_HEALTH_FAIL=1 assert_status 1 run_template --once
+assert_not_contains "image-rm" "$ACTION_LOG"
+assert_contains "autoupdate-rollback/example/api:20240101T000000Z" "$rollback_tags_file"
+pass "does not prune rollback tags before candidate health succeeds"
+
+make_fixture
+printf '\nAUTOUPDATE_ROLLBACK_IMAGE_RETENTION=0\n' >>"${TEST_DIR}/autoupdate.conf"
+assert_status 1 run_template --once
+assert_contains "AUTOUPDATE_ROLLBACK_IMAGE_RETENTION must be an integer from 1 through 10" "${TEST_DIR}/output"
+pass "rejects an invalid rollback image retention value"
 
 make_fixture
 set +e
@@ -291,6 +363,7 @@ set -e
 assert_contains "status=interrupted signal=TERM action=restore-prior-images" "${TEST_DIR}/output"
 assert_contains "up rollback=1 services=api platform=linux/amd64" "$ACTION_LOG"
 assert_contains "image-tag" "$ACTION_LOG"
+assert_not_contains "image-rm" "$ACTION_LOG"
 pass "TERM rollback restores prior tags through the configured rollback path"
 
 make_fixture
@@ -301,6 +374,7 @@ pass "rejects concurrent runs"
 assert_contains "SuccessExitStatus=10" "$SERVICE_TEMPLATE"
 assert_contains "TimeoutStopSec=2min" "$SERVICE_TEMPLATE"
 assert_contains "loginctl enable-linger" "$TEMPLATE_README"
+assert_contains "AUTOUPDATE_ROLLBACK_IMAGE_RETENTION" "$TEMPLATE_README"
 assert_contains "trap 'handle_interrupted_update TERM' TERM" "$TEMPLATE"
 pass "documents durable user timer operation and no-op service success"
 

@@ -9,16 +9,16 @@ import { parseDocument } from "yaml";
 
 const root = resolve(process.cwd());
 const execFileAsync = promisify(execFile);
-const canonicalRevision = "8303ab1a7aaf87a3b2409e4fb9bd804a265746a6";
+const canonicalRevision = "f0b62cc1ccf52e64e8de222a9159c99635444dd3";
 const templateHashes = {
-  "README.md": "ea1106fb7100fadb1376c5641731838767630646bdbf0df79e656e4bc0606cc4",
-  "autoupdate.artifactory-repo-ops.conf.example": "a2a26be638ea01ef6314fe502ccad2aed3fe8ec1d7765c29cbf863420a7bea7b",
-  "autoupdate.conf.example": "3d111704c45c18b83db1d127aa19b129929c07e75e322cab4b227b075aaeac16",
-  "autoupdate.sh": "bf49ed526042d95f796fb92b452c79560fd74fd16bd373db495dd34eeff3bd13",
+  "README.md": "5e6d50ec31dacdd7672f5b085b61dfe91b5582a1e9061f44f670443d25b72b3f",
+  "autoupdate.artifactory-repo-ops.conf.example": "4e0b69ade605b12235ab1968ec61a17876a56a32d155d10be982b89913ee4cc2",
+  "autoupdate.conf.example": "7c966929936c9ea68c3b43e1f4cf0dd0ad9dbd67e0763605a7776b088ec512b4",
+  "autoupdate.sh": "2c68ec79c9c564228ee230455f21c2cfb6ef68ac4e1588411deb374d69a481c5",
   "repo-ops-mapping.txt.example": "d0c6f9d37e9c753d502bcb6339da8e576875d37ffefb7c200c43bc010a1b3bc5",
   "systemd/autoupdate.service": "9e990712491eefa366e702faaf77ee21f9c1b7bb7ea45b32af39c309756ab7b4",
   "systemd/autoupdate.timer": "c288fee94dcf0cf0be46680a01717e18f166cd130ad9ccaa725d4d778e2f90ed",
-  "tests/autoupdate-template-test.sh": "4de36f35c6c146ceaf0d916170ece52216b56bfe302aca5a91ee143b9f184b77",
+  "tests/autoupdate-template-test.sh": "d663d5ba83c2224a0a70dd8c3ed256e571647d33ae4afb444446639043dc4208",
 };
 
 async function source(pathname) {
@@ -156,6 +156,7 @@ test("content-viewer configuration permits only the explicit GHCR development im
   assert.match(config, /^AUTOUPDATE_UP_COMMAND=\.\/infra\/docker\/up\.sh$/m);
   assert.match(config, /^AUTOUPDATE_HEALTH_COMMAND=\.\/infra\/docker\/healthcheck\.sh$/m);
   assert.match(config, /^AUTOUPDATE_ROLLBACK_COMMAND=\.\/infra\/docker\/up\.sh$/m);
+  assert.match(config, /^AUTOUPDATE_ROLLBACK_IMAGE_RETENTION=3$/m);
   assert.match(config, /^AUTOUPDATE_BOOTSTRAP_ROLLBACK_IMAGE=content-viewer-bootstrap-rollback:pre-ghcr-dev$/m);
   assert.match(config, /^AUTOUPDATE_BOOTSTRAP_PUBLIC_URL=https:\/\/kpe-content\.dev\.e2open\.com\/$/m);
   assert.doesNotMatch(config, /latest|@sha256/);
@@ -168,7 +169,7 @@ test("vendored updater matches the recorded techstack main template revision", a
 
   for (const [relativePath, expectedHash] of Object.entries(templateHashes)) {
     const contents = await source(`templates/compose-autoupdate/${relativePath}`);
-    const actualHash = createHash("sha256").update(contents.replace(/\r\n/g, "\n")).digest("hex");
+    const actualHash = createHash("sha256").update(contents).digest("hex");
     assert.equal(actualHash, expectedHash, `templates/compose-autoupdate/${relativePath} must remain the canonical vendor copy`);
   }
 });
@@ -307,6 +308,10 @@ test("operator documentation keeps the development channel and volume safety exp
   assert.match(documentation, /content-viewer_content-viewer-content/);
   assert.match(documentation, /AUTOUPDATE_PROJECT_NAME=content-viewer/);
   assert.match(documentation, /First image-only cutover \(one time\)/);
+  assert.match(documentation, /AUTOUPDATE_ROLLBACK_IMAGE_RETENTION=3/);
+  assert.match(documentation, /integer[s]? from `1` through `10`/i);
+  assert.match(documentation, /only after a candidate\s+passes health validation/i);
+  assert.match(documentation, /never prunes the currently recorded prior image/i);
 
   const bootstrapIndex = documentation.indexOf("./infra/docker/bootstrap-ghcr-dev.sh --config");
   const dryRunIndex = documentation.indexOf("./infra/docker/autoupdate.sh --config");

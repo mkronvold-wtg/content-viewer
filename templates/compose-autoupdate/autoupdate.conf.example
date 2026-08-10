@@ -31,6 +31,9 @@ AUTOUPDATE_ROLLBACK_COMMAND=./up.sh
 AUTOUPDATE_LOCK_PATH=/home/example/.local/state/content-viewer/autoupdate.lock
 AUTOUPDATE_DIGEST_RECORD_PATH=/home/example/.local/state/content-viewer/autoupdate-digests.txt
 AUTOUPDATE_ROLLBACK_IMAGE_PREFIX=autoupdate-rollback/content-viewer
+# Keep the current recorded prior image and up to two newer/older rollback tags.
+# Valid values are integers 1 through 10; omitted configuration defaults to 3.
+AUTOUPDATE_ROLLBACK_IMAGE_RETENTION=3
 
 # A timer should invoke --once. Set this only when intentionally running the
 # process as a long-lived service without a timer; zero runs one cycle by default.

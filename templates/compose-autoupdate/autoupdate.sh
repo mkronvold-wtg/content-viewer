@@ -46,6 +46,16 @@ is_service_name() {
   [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]]
 }
 
+is_rollback_tag_for_service() {
+  local rollback_tag="$1"
+  local service="$2"
+  local prefix timestamp
+  prefix="${AUTOUPDATE_ROLLBACK_IMAGE_PREFIX}/${service}:"
+  [[ "$rollback_tag" == "$prefix"* ]] || return 1
+  timestamp="${rollback_tag#"$prefix"}"
+  [[ "$timestamp" =~ ^[0-9]{8}T[0-9]{6}Z$ ]]
+}
+
 trim() {
   local value="$1"
   value="${value#"${value%%[![:space:]]*}"}"
@@ -233,6 +243,11 @@ validate_configuration() {
   [[ -d "$AUTOUPDATE_WORKDIR" ]] || die "AUTOUPDATE_WORKDIR does not exist"
   [[ "$AUTOUPDATE_TARGET_PLATFORM" =~ ^linux/[A-Za-z0-9_.-]+$ ]] || die "AUTOUPDATE_TARGET_PLATFORM must be a Linux platform"
   [[ "$AUTOUPDATE_ROLLBACK_IMAGE_PREFIX" != *[[:space:]]* ]] || die "AUTOUPDATE_ROLLBACK_IMAGE_PREFIX contains whitespace"
+  if [[ -z "${AUTOUPDATE_ROLLBACK_IMAGE_RETENTION+x}" ]]; then
+    AUTOUPDATE_ROLLBACK_IMAGE_RETENTION=3
+  fi
+  [[ "$AUTOUPDATE_ROLLBACK_IMAGE_RETENTION" =~ ^([1-9]|10)$ ]] \
+    || die "AUTOUPDATE_ROLLBACK_IMAGE_RETENTION must be an integer from 1 through 10"
 
   compose_arguments=()
   local compose_file env_file
@@ -481,6 +496,70 @@ record_deployment() {
   mv -- "$temporary_record" "$AUTOUPDATE_DIGEST_RECORD_PATH"
 }
 
+prune_superseded_rollback_tags() {
+  local recorded_service recorded_image recorded_current_digest recorded_deployed_digest
+  local recorded_remote_digest recorded_tag extra_field
+  local service repository listed_tags tag retained_count index next_tag swap
+  local -a recorded_rollback_tags=()
+  local -a service_rollback_tags=()
+  local -a sorted_rollback_tags=()
+
+  while IFS='|' read -r recorded_service recorded_image recorded_current_digest \
+    recorded_deployed_digest recorded_remote_digest recorded_tag extra_field; do
+    [[ -z "$recorded_service" || "$recorded_service" == \#* ]] && continue
+    [[ -z "$extra_field" ]] || continue
+    contains_value "$recorded_service" "${allowed_services[@]}" || continue
+    is_rollback_tag_for_service "$recorded_tag" "$recorded_service" || continue
+    contains_value "$recorded_tag" "${recorded_rollback_tags[@]:-}" \
+      || recorded_rollback_tags+=("$recorded_tag")
+  done <"$AUTOUPDATE_DIGEST_RECORD_PATH"
+
+  for service in "${allowed_services[@]}"; do
+    repository="${AUTOUPDATE_ROLLBACK_IMAGE_PREFIX}/${service}"
+    if ! listed_tags="$(docker image ls --format '{{.Repository}}:{{.Tag}}' "$repository")"; then
+      log warn "status=retention-prune-skipped service=$service reason=image-list-failed"
+      continue
+    fi
+
+    service_rollback_tags=()
+    while IFS= read -r tag || [[ -n "$tag" ]]; do
+      tag="$(trim "$tag")"
+      is_rollback_tag_for_service "$tag" "$service" || continue
+      contains_value "$tag" "${service_rollback_tags[@]:-}" \
+        || service_rollback_tags+=("$tag")
+    done <<<"$listed_tags"
+    ((${#service_rollback_tags[@]} > 0)) || continue
+
+    sorted_rollback_tags=("${service_rollback_tags[@]}")
+    for ((index = 0; index < ${#sorted_rollback_tags[@]}; index++)); do
+      for ((next_tag = index + 1; next_tag < ${#sorted_rollback_tags[@]}; next_tag++)); do
+        if [[ "${sorted_rollback_tags[$next_tag]}" > "${sorted_rollback_tags[$index]}" ]]; then
+          swap="${sorted_rollback_tags[$index]}"
+          sorted_rollback_tags[$index]="${sorted_rollback_tags[$next_tag]}"
+          sorted_rollback_tags[$next_tag]="$swap"
+        fi
+      done
+    done
+
+    retained_count=0
+    for tag in "${sorted_rollback_tags[@]}"; do
+      if contains_value "$tag" "${recorded_rollback_tags[@]:-}"; then
+        ((retained_count += 1))
+        continue
+      fi
+      if ((retained_count < AUTOUPDATE_ROLLBACK_IMAGE_RETENTION)); then
+        ((retained_count += 1))
+        continue
+      fi
+      if docker image rm "$tag" >/dev/null; then
+        log info "status=rollback-tag-pruned service=$service tag=$tag"
+      else
+        log warn "status=retention-prune-skipped service=$service tag=$tag reason=image-remove-failed"
+      fi
+    done
+  done
+}
+
 run_cycle() {
   local service image current_id current_digest remote_digest
   changed_services=()
@@ -539,6 +618,7 @@ run_cycle() {
     die "health command failed; prior images were restored"
   fi
   record_deployment
+  prune_superseded_rollback_tags
   clear_rollback_traps
   log info "status=updated services=$(IFS=,; printf '%s' "${changed_services[*]}")"
 }

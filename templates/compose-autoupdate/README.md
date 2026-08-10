@@ -61,6 +61,11 @@ only when the application explicitly sets it. Compose and env paths are whitespa
 same working directory and do not take inline arguments; use small reviewed
 wrappers when arguments are needed.
 
+`AUTOUPDATE_ROLLBACK_IMAGE_RETENTION` is optional and defaults to `3`. It must
+be an integer from `1` through `10`; use it to set the finite number of
+timestamped rollback tags retained for each allowlisted service. An invalid
+value is rejected before Docker is invoked.
+
 `AUTOUPDATE_ALLOWED_IMAGES` is one `service=image:tag` mapping per line. The
 rendered Compose image for each allowed service must match exactly. The
 template never calls pull, restart, health, or rollback with any service not in
@@ -88,8 +93,12 @@ Before pulling, the updater records each running image ID under a local
 rollback tag. It compares the running manifest digest with the manifest digest
 resolved remotely for `AUTOUPDATE_TARGET_PLATFORM`; only changed app services
 are pulled. It verifies the pulled digest, invokes `up.sh`, runs health, writes
-the digest record atomically, and restores the prior tags plus the app rollback
-path when either command fails.
+the digest record atomically, then prunes superseded, timestamped rollback tags
+only for allowlisted services beyond
+`AUTOUPDATE_ROLLBACK_IMAGE_RETENTION`. The rollback tag recorded for the
+successful deployment is never pruned. No rollback tag is removed until health
+has succeeded and the replacement record is durable. The updater restores the
+prior tags plus the app rollback path when either command fails.
 
 Once prior image tags are retained, the updater arms bounded `TERM`, `INT`, and
 `HUP` handling. An interruption ignores repeated signals, restores prior tags,

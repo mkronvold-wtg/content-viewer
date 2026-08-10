@@ -3,3 +3,6 @@
 *.service text eol=lf
 *.timer text eol=lf
 *.conf.example text eol=lf
+
+# The canonical updater is a byte-for-byte vendor copy; preserve upstream bytes.
+templates/compose-autoupdate/** -text !eol
