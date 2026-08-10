@@ -11,8 +11,8 @@ repository was run against a deployment target.
 | --- | --- |
 | `Dockerfile` | Uses the official `node:26-alpine3.23` image pinned to an immutable digest for separate dependency and runtime stages. The runtime installs Git and CA certificates, retains only production dependencies and required server/theme assets, creates `/app/content` owned by `node`, runs as `USER node`, and health-checks `GET /api/health`. |
 | `docker-compose.yml` | Local Compose builds the service, tags it `content-viewer:local`, binds `127.0.0.1:8080:8080`, and mounts the logical named volume `content-viewer-content` at `/app/content`. |
-| `docker-compose.npm.yml` | The dockerhost/NPM-proxy target builds the service, mounts the same logical volume at `/app/content`, exposes port `8080` only to Compose networks, and joins the external network named `npm-proxy`. It has no host `ports` mapping. |
-| `README.md` | Documents the local command `docker compose up -d --build`; it does not define an authoritative dockerhost project name or invocation. |
+| `docker-compose.npm.yml` | The dockerhost/NPM-proxy target is image-only: it requires `CONTENT_VIEWER_IMAGE`, mounts the same logical volume at `/app/content`, exposes port `8080` only to Compose networks, and joins the external network named `npm-proxy`. It has no host `ports` mapping. |
+| `README.md` | Documents the local build-oriented Compose command and links this runbook for the image-only Dockerhost procedure. |
 | `package.json` | `npm run build` and `npm run check` syntax-check `server.mjs` using committed inputs. `npm run test:contracts` runs the explicit deterministic Node contract suite, and `npm run test:container` smoke-tests a supplied final image with an isolated no-network container and volume. Theme refresh is a separate maintenance action that requires an immutable full upstream commit SHA, as described in `README.md`. |
 | `.env.example` | Configures the Git-backed content clone under `/app/content` and identifies `CONTENT_VIEWER_GITHUB_TOKEN` as a read-only content-repository credential. |
 | `server.mjs` | Defines the routes and clone/refresh behavior in the route matrix below. |
@@ -22,23 +22,25 @@ repository was run against a deployment target.
 | Target | Repository command or configuration | Boundary |
 | --- | --- | --- |
 | Local development | `docker compose up -d --build` from `README.md` with `docker-compose.yml` | Host-only port binding at `127.0.0.1:8080`; image tag is `content-viewer:local`. |
-| Dockerhost behind NPM/proxy | `docker-compose.npm.yml` | No host port is published by this file. The service is reachable on the external Compose network `npm-proxy` as `content-viewer:8080`. The actual Compose project name, proxy routing, and dockerhost invocation are not in this repository. |
+| Dockerhost behind NPM/proxy | `docker-compose.npm.yml` and `infra/docker/up.sh` | No host port is published by this file. The service is reachable on the external Compose network `npm-proxy` as `content-viewer:8080`. The Compose target is image-only and requires `CONTENT_VIEWER_IMAGE`; `up.sh` is the only repository restart path and never builds or removes the persistent volume. |
 
 The logical volume declaration is `content-viewer-content` in both Compose
 files. Because neither file sets a top-level Compose `name`, the physical
 volume name is project-scoped and must be discovered on the dockerhost rather
 than guessed from the logical name.
 
-**Deployment-only operator action:** when the dockerhost owner has confirmed
-the approved project name, use that explicit name in deployment commands, for
-example:
+**Deployment-only operator action:** the dockerhost owner must preserve the
+existing Compose project identity when deploying from the approved repository
+directory. It must match the project that owns the physical content volume; do
+not guess it from the logical `content-viewer-content` declaration. The
+image-only wrapper is:
 
 ```sh
-docker compose -p "$PROJECT" -f docker-compose.npm.yml up -d --build
+./infra/docker/up.sh --services content-viewer
 ```
 
-This is an operator procedure, not a claim that `$PROJECT` is the current
-deployment value.
+This is an operator procedure, not a claim that the repository knows the
+current project or deployment directory.
 
 ## Pending baseline evidence
 
@@ -88,6 +90,103 @@ Backup, restore, copied-volume creation, and deployment switching are
 deployment-only operator actions. This repository supplies no backup image,
 host storage location, Compose override, or verified dockerhost command, so
 it does not prescribe unverified commands for those destructive operations.
+
+## Development Dockerhost auto-update (not installed)
+
+This repository contains a **development-only mutable GHCR `:dev` channel**;
+it is not installed by this change, is not a production promotion mechanism,
+and has no Artifactory configuration. The Dockerhost target accepts only
+`ghcr.io/mkronvold-wtg/content-viewer:dev` on `linux/amd64`. The updater
+rejects `latest`, unrecognized rendered images, and immutable digest pins.
+
+The reusable updater is vendored without modification from
+[`mkronvold/techstack`](https://github.com/mkronvold/techstack/tree/8303ab1a7aaf87a3b2409e4fb9bd804a265746a6/templates/compose-autoupdate)
+at `8303ab1a7aaf87a3b2409e4fb9bd804a265746a6`, from
+`templates/compose-autoupdate` on its synchronized `main` branch. The
+`test/dev-autoupdate.test.mjs` integrity check records every vendored file's
+SHA-256. Future updates must copy a reviewed template revision and update this
+provenance and its test together; do not edit its safety logic locally.
+
+### Required host preparation
+
+Before enabling a timer, the Dockerhost operator must:
+
+1. Complete the copied-volume forward/rollback rehearsal in the
+   [persistent-volume safety contract](#persistent-volume-safety-contract).
+   The existing physical `/app/content` volume and Compose project identity
+   must remain unchanged.
+2. Keep the deployment checkout at `%h/content-viewer`, or consistently adjust
+   the copied user unit's `%h/content-viewer` paths. The unit is parameterized
+   with `%h`; it contains no username, secret, or host-specific absolute home
+   path.
+3. Create the deployment directory's uncommitted `.env` from `.env.example`,
+   preserving its content-repository settings and setting
+   `CONTENT_VIEWER_IMAGE=ghcr.io/mkronvold-wtg/content-viewer:dev`.
+4. Authenticate as the deployment user with the host-local Docker credential
+   store for `ghcr.io`. The updater configuration contains no registry token
+   and never runs `docker login`.
+5. Copy `infra/docker/content-viewer-autoupdate.conf.example` to
+   `~/.config/content-viewer/autoupdate.conf`, retain the exact allowlist, and
+   restrict it to mode `0600`.
+
+The config uses `docker-compose.npm.yml` and `.env`, permits only the
+`content-viewer` service, and calls the exact vendored
+`templates/compose-autoupdate/autoupdate.sh` entrypoint. `up.sh` is the only
+repository restart path. It recreates that one service with `--no-build` and
+`--no-deps`; the updater itself handles the approved image acquisition and
+rollback tags. It neither builds nor removes the named volume.
+
+Run the no-Docker-daemon template tests and the deployment-config dry run
+before enabling the timer:
+
+```sh
+bash templates/compose-autoupdate/tests/autoupdate-template-test.sh
+templates/compose-autoupdate/autoupdate.sh --config ~/.config/content-viewer/autoupdate.conf --dry-run
+```
+
+### User timer installation, disablement, and rollback
+
+Only after the copied-volume rehearsal succeeds, enable lingering for the
+deployment user so the user timer survives logout and boot:
+
+```sh
+sudo loginctl enable-linger <deployment-user>
+test "$(loginctl show-user <deployment-user> -p Linger --value)" = yes
+```
+
+Install the parameterized user units and enable the 30-minute timer. The unit
+runs `autoupdate.sh --once`, treats no-op exit `10` as successful, bounds stop
+recovery at two minutes, and uses a persistent timer with a five-minute
+randomized delay:
+
+```sh
+mkdir -p ~/.config/systemd/user ~/.config/content-viewer
+cp infra/docker/systemd/content-viewer-autoupdate.service ~/.config/systemd/user/
+cp infra/docker/systemd/content-viewer-autoupdate.timer ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now content-viewer-autoupdate.timer
+```
+
+This procedure is documentation only; it does not claim that a timer is
+installed on Dockerhost. To stop future development-channel updates, run:
+
+```sh
+systemctl --user disable --now content-viewer-autoupdate.timer
+```
+
+On an update or health failure, the canonical updater restores its retained
+local image tag and invokes `up.sh` and `healthcheck.sh` in rollback mode. For
+a manual recovery, disable the timer first and restore the approved local image
+tag using the recorded update evidence; then run only:
+
+```sh
+AUTOUPDATE_ROLLBACK=1 AUTOUPDATE_SERVICES=content-viewer ./infra/docker/up.sh --services content-viewer
+AUTOUPDATE_ROLLBACK=1 AUTOUPDATE_SERVICES=content-viewer ./infra/docker/healthcheck.sh --services content-viewer
+```
+
+Use `./infra/docker/down.sh` only to stop the Compose target. It rejects
+`-v`/`--volumes`, and **never run `docker compose down -v`**: the persistent
+content clone volume must survive both update and rollback.
 
 ## Route and mutation matrix
 

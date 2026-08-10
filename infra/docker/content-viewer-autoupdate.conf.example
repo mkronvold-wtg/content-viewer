@@ -1,0 +1,23 @@
+# Copy to ~/.config/content-viewer/autoupdate.conf and set mode 0600. Docker
+# obtains any GHCR pull credential from the deployment user's credential store.
+# The systemd unit runs with the repository root as its working directory.
+AUTOUPDATE_WORKDIR=.
+AUTOUPDATE_COMPOSE_FILES="docker-compose.npm.yml"
+AUTOUPDATE_COMPOSE_ENV_FILES=".env"
+
+AUTOUPDATE_ALLOWED_SERVICES="content-viewer"
+AUTOUPDATE_ALLOWED_IMAGES="
+content-viewer=ghcr.io/mkronvold-wtg/content-viewer:dev
+"
+AUTOUPDATE_REGISTRY_PROFILE=ghcr-dev
+AUTOUPDATE_GHCR_MUTABLE_TAG=dev
+AUTOUPDATE_TARGET_PLATFORM=linux/amd64
+
+AUTOUPDATE_UP_COMMAND=./infra/docker/up.sh
+AUTOUPDATE_HEALTH_COMMAND=./infra/docker/healthcheck.sh
+AUTOUPDATE_ROLLBACK_COMMAND=./infra/docker/up.sh
+
+AUTOUPDATE_LOCK_PATH="${HOME}/.local/state/content-viewer/autoupdate.lock"
+AUTOUPDATE_DIGEST_RECORD_PATH="${HOME}/.local/state/content-viewer/autoupdate-digests.txt"
+AUTOUPDATE_ROLLBACK_IMAGE_PREFIX=autoupdate-rollback/content-viewer
+AUTOUPDATE_INTERVAL_SECONDS=0

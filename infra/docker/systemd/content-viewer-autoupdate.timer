@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Content Viewer development-image auto-update every 30 minutes
+
+[Timer]
+OnCalendar=*:0/30
+Persistent=true
+RandomizedDelaySec=5m
+Unit=content-viewer-autoupdate.service
+
+[Install]
+WantedBy=timers.target

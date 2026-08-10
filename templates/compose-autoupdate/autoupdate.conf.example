@@ -1,0 +1,37 @@
+# Copy to a host-owned, mode 0600 autoupdate.conf and replace every example.
+# This file contains no registry token. Docker reads pull credentials from its
+# configured credential store (~/.docker/config.json for the systemd User).
+
+AUTOUPDATE_WORKDIR=/srv/content-viewer/infra/docker
+AUTOUPDATE_COMPOSE_FILES="compose-prod.yaml"
+AUTOUPDATE_COMPOSE_ENV_FILES="compose-prod.env compose-prod.images.env"
+
+# Only listed application services can be inspected, pulled, or passed to up.sh.
+# Do not list databases, migration jobs, proxies, caches, or other sidecars.
+AUTOUPDATE_ALLOWED_SERVICES="content-viewer"
+AUTOUPDATE_ALLOWED_IMAGES="
+content-viewer=ghcr.io/mkronvold-wtg/content-viewer:dev
+"
+
+# ghcr-dev permits only the explicit mutable tag below. It has no latest default.
+# artifactory-repo-ops permits only repo.ops runtime pulls, requires Linux/amd64,
+# and checks the protected source-to-pull mapping below before every update.
+AUTOUPDATE_REGISTRY_PROFILE=ghcr-dev
+AUTOUPDATE_GHCR_MUTABLE_TAG=dev
+AUTOUPDATE_TARGET_PLATFORM=linux/amd64
+# AUTOUPDATE_ARTIFACTORY_MAPPING_PATH=/srv/content-viewer/infra/docker/repo-ops-mapping.txt
+
+# These local, reviewed scripts must accept "--services <service>..." and use
+# AUTOUPDATE_SERVICES. With AUTOUPDATE_ROLLBACK=1, up.sh must not pull and must
+# recreate only the supplied services from the restored local image tags.
+AUTOUPDATE_UP_COMMAND=./up.sh
+AUTOUPDATE_HEALTH_COMMAND=./healthcheck.sh
+AUTOUPDATE_ROLLBACK_COMMAND=./up.sh
+
+AUTOUPDATE_LOCK_PATH=/home/example/.local/state/content-viewer/autoupdate.lock
+AUTOUPDATE_DIGEST_RECORD_PATH=/home/example/.local/state/content-viewer/autoupdate-digests.txt
+AUTOUPDATE_ROLLBACK_IMAGE_PREFIX=autoupdate-rollback/content-viewer
+
+# A timer should invoke --once. Set this only when intentionally running the
+# process as a long-lived service without a timer; zero runs one cycle by default.
+AUTOUPDATE_INTERVAL_SECONDS=0

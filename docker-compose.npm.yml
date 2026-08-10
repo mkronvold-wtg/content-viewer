@@ -1,7 +1,6 @@
 services:
   content-viewer:
-    build:
-      context: .
+    image: "${CONTENT_VIEWER_IMAGE:?CONTENT_VIEWER_IMAGE must be set}"
     restart: unless-stopped
     env_file:
       - .env

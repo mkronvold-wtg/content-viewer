@@ -1,0 +1,25 @@
+# Copy to a host-owned, mode 0600 autoupdate.conf after protected publication.
+# The runtime Docker credential store must contain a pull-only identity for
+# repo.ops. It must not contain or use a sv4.art runtime pull endpoint.
+
+AUTOUPDATE_WORKDIR=/srv/example-app/infra/docker
+AUTOUPDATE_COMPOSE_FILES="compose-prod.yaml"
+AUTOUPDATE_COMPOSE_ENV_FILES="compose-prod.env compose-prod.images.env"
+AUTOUPDATE_ALLOWED_SERVICES="api web worker"
+AUTOUPDATE_ALLOWED_IMAGES="
+api=repo.ops/team/example-app-api:latest
+web=repo.ops/team/example-app-web:latest
+worker=repo.ops/team/example-app-worker:latest
+"
+
+AUTOUPDATE_REGISTRY_PROFILE=artifactory-repo-ops
+AUTOUPDATE_TARGET_PLATFORM=linux/amd64
+AUTOUPDATE_ARTIFACTORY_MAPPING_PATH=/srv/example-app/infra/docker/repo-ops-mapping.txt
+
+AUTOUPDATE_UP_COMMAND=./up.sh
+AUTOUPDATE_HEALTH_COMMAND=./healthcheck.sh
+AUTOUPDATE_ROLLBACK_COMMAND=./up.sh
+AUTOUPDATE_LOCK_PATH=/home/example/.local/state/example-app/autoupdate.lock
+AUTOUPDATE_DIGEST_RECORD_PATH=/home/example/.local/state/example-app/autoupdate-digests.txt
+AUTOUPDATE_ROLLBACK_IMAGE_PREFIX=autoupdate-rollback/example-app
+AUTOUPDATE_INTERVAL_SECONDS=0
