@@ -30,6 +30,17 @@ jobs:
           persist-credentials: false
       - name: Validate exception governance
         run: node scripts/validate-security-exceptions.mjs
+      - name: Set Trivy cache date
+        id: trivy-cache-date
+        shell: bash
+        run: echo "date=$(date -u +'%Y-%m-%d')" >> "$GITHUB_OUTPUT"
+      - name: Cache Trivy vulnerability database
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: ${{ github.workspace }}/.cache/trivy
+          key: trivy-${{ runner.os }}-${{ steps.trivy-cache-date.outputs.date }}
+          restore-keys: |
+            trivy-${{ runner.os }}-
       - name: Scan filesystem and lockfile with Trivy
         uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # v0.33.1
         with:
@@ -41,6 +52,7 @@ jobs:
           exit-code: '0'
           ignore-unfixed: 'false'
           version: v0.73.0
+          cache: 'false'
       - name: Build final runtime image
         run: docker build --tag content-viewer:security-${{ github.sha }} .
       - name: Capture immutable local image content digest
@@ -61,6 +73,7 @@ jobs:
           exit-code: '0'
           ignore-unfixed: 'false'
           version: v0.73.0
+          cache: 'false'
       - name: Convert evidence to SARIF
         run: |
           trivy convert --format sarif --output trivy-source.sarif trivy-source.json
