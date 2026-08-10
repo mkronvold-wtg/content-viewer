@@ -183,6 +183,7 @@ test('validation workflow runs the complete Node suite before one separate image
     'npm run test:table-controls',
     'npm run test:security-exceptions',
     'npm run test:base-digest-remediation',
+    'npm run test:ghcr-publish',
   ]);
   assert.equal(deterministicSuite.includes('npm run test:container'), false);
   assert.ok(Array.isArray(steps), 'Validation workflow must define validate job steps');
