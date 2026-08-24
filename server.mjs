@@ -1561,9 +1561,31 @@ function renderHtml(appState, initialView = {}) {
     }
 
     .result-title {
-      display: block;
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
       font-weight: var(--font-weight-semibold, 600);
       margin-bottom: 2px;
+    }
+
+    .result-title-text {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .document-type-pill {
+      flex: 0 0 auto;
+      padding: 1px 5px;
+      border: 1px solid color-mix(in srgb, var(--theme-border) 80%, transparent);
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--theme-surface) 80%, transparent);
+      color: var(--theme-chrome-muted-text);
+      font-size: 10px;
+      font-weight: var(--font-weight-semibold, 600);
+      letter-spacing: 0.02em;
+      line-height: 14px;
     }
 
     .results[data-preview-mode="title-only"] .result {
@@ -2225,6 +2247,21 @@ function renderHtml(appState, initialView = {}) {
       const parts = String(value).split("/").filter(Boolean);
       const directoryParts = parts.slice(0, -1);
       return directoryParts.length ? directoryParts.join("/") : "Repository root";
+    }
+
+    function documentTypePill(format) {
+      if (format === "csv") {
+        return '<span class="document-type-pill" aria-label="CSV document">(csv)</span>';
+      }
+      return '<span class="document-type-pill" aria-label="Markdown document">(md)</span>';
+    }
+
+    function navigationResultHtml(result) {
+      return (
+        '<span class="result-title"><span class="result-title-text">' + highlightText(result.title) + "</span>" + documentTypePill(result.format) + "</span>" +
+        '<span class="result-path">' + highlightText(displayResultPath(result.path)) + "</span>" +
+        (result.snippet ? '<div class="snippet">' + highlightText(result.snippet) + "</div>" : "")
+      );
     }
 
     function getFacetFieldName() {
@@ -3618,10 +3655,7 @@ function renderHtml(appState, initialView = {}) {
           const button = document.createElement("button");
           button.type = "button";
           button.className = "result" + (result.path === activePath ? " active" : "");
-          button.innerHTML =
-            '<span class="result-title">' + highlightText(result.title) + "</span>" +
-            '<span class="result-path">' + highlightText(displayResultPath(result.path)) + "</span>" +
-            (result.snippet ? '<div class="snippet">' + highlightText(result.snippet) + "</div>" : "");
+          button.innerHTML = navigationResultHtml(result);
           button.addEventListener("click", () => openDocument(result.path));
           resultsElement.appendChild(button);
         }
