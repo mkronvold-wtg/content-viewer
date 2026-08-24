@@ -1,0 +1,16 @@
+[Unit]
+Description=Content Viewer allowlisted development-image auto-update
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+SuccessExitStatus=10
+TimeoutStopSec=2min
+WorkingDirectory=%h/content-viewer
+Environment=HOME=%h
+ExecStart=%h/content-viewer/infra/docker/autoupdate.sh --config %h/.config/content-viewer/autoupdate.conf --once
+
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077
