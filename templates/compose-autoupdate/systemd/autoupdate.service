@@ -1,0 +1,17 @@
+[Unit]
+Description=Content viewer allowlisted Compose image auto-update
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+SuccessExitStatus=10
+TimeoutStopSec=2min
+WorkingDirectory=/srv/content-viewer/infra/docker
+Environment=HOME=%h
+ExecStart=/srv/content-viewer/infra/docker/autoupdate.sh --config %h/.config/content-viewer/autoupdate.conf --once
+
+# Keep Docker credential-store access and state isolated to this user.
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077
