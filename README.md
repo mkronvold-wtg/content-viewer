@@ -180,9 +180,12 @@ behind the existing trusted proxy/network boundary. Proxy authorization and
 rate-limit verification are external operator responsibilities; this
 repository does not configure or verify either control.
 
-No automatic image promotion is authorized until later phases supply the
-required scan, immutable-image, health, and copied-volume rehearsal evidence
-described in the runbook.
+The approved Dockerhost auto-update path is limited to the **development-only
+mutable GHCR `:dev` channel** described in
+[`docs/operations.md`](docs/operations.md). It is not a production promotion
+path and is not installed by this repository. It requires the copied-volume
+rehearsal, host-local Docker credential-store setup, and user-timer procedure
+in that runbook before an operator enables it.
 
 ## Docker Compose quick start
 
@@ -322,5 +325,4 @@ Separate containers are not required initially. Split later only if you want a d
 2. Move the browser renderer out of the template string into static files.
 3. Add structured logging and request IDs.
 4. Add optional reverse-proxy auth examples.
-5. Add GHCR publishing workflow.
-6. Add Kubernetes manifests if Docker Compose is no longer enough.
+5. Add Kubernetes manifests if Docker Compose is no longer enough.
