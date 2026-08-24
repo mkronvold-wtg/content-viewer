@@ -193,9 +193,11 @@ test "$(loginctl show-user <deployment-user> -p Linger --value)" = yes
 ```
 
 Install the parameterized user units and enable the 30-minute timer. The unit
-runs `autoupdate.sh --once`, treats no-op exit `10` as successful, bounds stop
-recovery at two minutes, and uses a persistent timer with a five-minute
-randomized delay:
+runs `autoupdate.sh --once` through `sg docker`, treats no-op exit `10` as
+successful, bounds stop recovery at two minutes, and uses a persistent timer
+with a five-minute randomized delay. It must not set `NoNewPrivileges=true`:
+lingering EL8 user managers often lack the `docker` supplementary group, and
+that flag blocks `sg` from entering it.
 
 ```sh
 mkdir -p ~/.config/systemd/user ~/.config/content-viewer
