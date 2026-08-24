@@ -1,0 +1,6 @@
+# Generated/provisioned only after protected sv4.art/repo.ops publication,
+# Trivy and Xray policy success, Linux/amd64 verification, and OCI revision
+# verification. This is deployment metadata; a runtime host never pulls sv4.art.
+#
+# pull_reference|pull_manifest_digest|source_reference|source_manifest_digest|platform|oci_revision
+repo.ops/team/example-app-api:latest|sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|sv4.art/repo.ops/team/example-app-api@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb|linux/amd64|0123456789abcdef0123456789abcdef01234567
