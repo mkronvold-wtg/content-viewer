@@ -421,7 +421,7 @@ test('Trivy workflows pin the verified installer and require every scan to succe
     ['security', parseWorkflow(securitySource), 2],
     ['remediation', parseWorkflow(remediationSource), 2],
   ];
-  const trivyAction = 'aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8';
+  const trivyAction = 'aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25';
 
   for (const [name, workflow, expectedScans] of workflows) {
     const scans = Object.values(workflow.jobs).flatMap((job) => job.steps ?? [])
