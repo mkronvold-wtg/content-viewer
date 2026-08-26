@@ -9,8 +9,8 @@ SuccessExitStatus=10
 TimeoutStopSec=2min
 WorkingDirectory=%h/content-viewer
 Environment=HOME=%h
-ExecStart=%h/content-viewer/infra/docker/autoupdate.sh --config %h/.config/content-viewer/autoupdate.conf --once
-
-NoNewPrivileges=true
+# Lingering user managers on EL8 often have only the primary group. sg docker
+# enters the allowlisted socket group; NoNewPrivileges would block that.
+ExecStart=/usr/bin/sg docker -c '%h/content-viewer/infra/docker/autoupdate.sh --config %h/.config/content-viewer/autoupdate.conf --once'
 PrivateTmp=true
 UMask=0077
