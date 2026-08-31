@@ -25,7 +25,7 @@
     "test:dev-autoupdate": "node --test test/dev-autoupdate.test.mjs"
   },
   "dependencies": {
-    "mermaid": "^11.17.0"
+    "mermaid": "^11.17.2"
   },
   "devDependencies": {
     "yaml": "^2.9.0"
