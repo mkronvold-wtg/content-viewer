@@ -127,6 +127,7 @@ test("NPM Compose is image-only and preserves the proxy and content-volume contr
   assert.equal(Object.hasOwn(service, "build"), false);
   assert.equal(service.image, "${CONTENT_VIEWER_IMAGE:?CONTENT_VIEWER_IMAGE must be set}");
   assert.equal(service.restart, "unless-stopped");
+  assert.equal(service.environment?.CONTENT_VIEWER_REPO_PATH, "${CONTENT_VIEWER_REPO_PATH:-/app/content}");
   assert.deepEqual(service.ports ?? [], []);
   assert.deepEqual(service.volumes, ["content-viewer-content:/app/content"]);
   assert.ok(Object.hasOwn(service.networks ?? {}, "content-viewer-egress"));
