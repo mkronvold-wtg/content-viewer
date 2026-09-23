@@ -149,6 +149,7 @@ test("content-viewer configuration permits only the explicit GHCR development im
   assert.match(config, /^AUTOUPDATE_PROJECT_NAME=content-viewer$/m);
   assert.match(config, /^export AUTOUPDATE_PROJECT_NAME$/m);
   assert.match(config, /^export COMPOSE_PROJECT_NAME="\$AUTOUPDATE_PROJECT_NAME"$/m);
+  assert.match(config, /^AUTOUPDATE_CONTENT_VOLUME_CLASS=stateful$/m);
   assert.match(config, /^AUTOUPDATE_ALLOWED_SERVICES="content-viewer"$/m);
   assert.match(config, /^content-viewer=ghcr\.io\/mkronvold-wtg\/content-viewer:dev$/m);
   assert.match(config, /^AUTOUPDATE_REGISTRY_PROFILE=ghcr-dev$/m);
@@ -213,6 +214,7 @@ test("application wrappers preserve image-only and named-volume safety", async (
   assert.match(health, /RETRY_SECONDS=3/);
   assert.match(updater, /source "\$CONFIG_PATH"/);
   assert.match(updater, /validate_project_name/);
+  assert.match(updater, /AUTOUPDATE_CONTENT_VOLUME_CLASS must be stateful or clone-cache/);
   assert.match(updater, /export COMPOSE_PROJECT_NAME="\$PROJECT"/);
   assert.match(updater, /templates\/compose-autoupdate\/autoupdate\.sh/);
   assert.match(updater, /"\$\{ORIGINAL_ARGS\[@\]\}"/);
@@ -308,6 +310,7 @@ test("operator documentation keeps the development channel and volume safety exp
   assert.match(documentation, /read-only cached clone volumes?/i);
   assert.match(documentation, /backup, restore, and copied-volume rehearsal are not required/i);
   assert.match(documentation, /recreate the cache from origin/i);
+  assert.match(documentation, /reproducible.*clone-cache/i);
   assert.match(documentation, /Never run `docker compose down -v`/);
   assert.match(documentation, /not installed/i);
   assert.match(documentation, /content-viewer_content-viewer-content/);
