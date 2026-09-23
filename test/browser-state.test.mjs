@@ -48,6 +48,10 @@ function viewerFunction(viewer, name) {
     assert.fail(`could not find the end of ${name}`);
 }
 
+function escapeRegex(value) {
+    return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function evaluateNavigationUrlFunctions(viewer, href) {
     const source = ["repoPathPrefix", "encodeDocumentPath", "documentUrl", "documentNavigationUrl", "updatePresentationUrl"]
         .map((name) => viewerFunction(viewer, name))
@@ -229,6 +233,13 @@ function evaluateNavigationResultRenderer(viewer) {
     return Function("highlightTokens", `${source}\nreturn navigationResultHtml;`)([]);
 }
 
+function evaluateFrontmatterRenderer(viewer) {
+    const source = ["escapeHtml", "isUtcDateTimeValue", "frontmatterFieldValueHtml", "renderFrontmatterFields"]
+        .map((name) => viewerFunction(viewer, name))
+        .join("\n");
+    return Function(`${source}\nreturn { isUtcDateTimeValue, renderFrontmatterFields };`)();
+}
+
 test("renders Markdown and CSV type pills in navigation entries", async () => {
     const serverPath = fileURLToPath(new URL("../server.mjs", import.meta.url));
     const serverSource = await fs.readFile(serverPath, "utf8");
@@ -244,6 +255,31 @@ test("renders Markdown and CSV type pills in navigation entries", async () => {
     assert.match(csv, /<span class="result-path">reports<\/span>/);
 
     assert.match(viewer, /\.document-type-pill \{\s+flex: 0 0 auto;\s+padding: 1px 5px;\s+border: 1px solid color-mix\(in srgb, var\(--theme-border\) 80%, transparent\);/);
+});
+
+test("renders frontmatter metadata fields and localizes UTC timestamps", async () => {
+    const serverPath = fileURLToPath(new URL("../server.mjs", import.meta.url));
+    const serverSource = await fs.readFile(serverPath, "utf8");
+    const viewer = viewerSource(serverSource);
+    const { isUtcDateTimeValue, renderFrontmatterFields } = evaluateFrontmatterRenderer(viewer);
+
+    assert.match(viewer, /<dl id="doc-frontmatter" class="meta frontmatter-list" hidden><\/dl>/);
+    assert.match(viewer, /const docFrontmatter = document\.getElementById\("doc-frontmatter"\);/);
+    assert.match(viewer, /docFrontmatter\.innerHTML = renderFrontmatterFields\(doc\.frontmatter\);/);
+    assert.match(viewer, /docFrontmatter\.hidden = !doc\.frontmatter\.length;/);
+
+    assert.equal(isUtcDateTimeValue("2026-09-22T14:30:00Z"), true);
+    assert.equal(isUtcDateTimeValue("alice"), false);
+
+    const html = renderFrontmatterFields([
+        { label: "Created", value: "2026-09-22T14:30:00Z" },
+        { label: "Created By", value: "alice" },
+        { label: "Aliases", value: ["Quickstart", "Getting Started"] },
+    ]);
+    assert.match(html, /<dt>Created<\/dt><dd><time datetime="2026-09-22T14:30:00Z">/);
+    assert.match(html, new RegExp(escapeRegex(new Date("2026-09-22T14:30:00Z").toLocaleString())));
+    assert.match(html, /<dt>Created By<\/dt><dd>alice<\/dd>/);
+    assert.match(html, /<dt>Aliases<\/dt><dd>Quickstart, Getting Started<\/dd>/);
 });
 
 test("persists the navigation result preview display mode in the web reader", async () => {
