@@ -130,9 +130,9 @@ test("NPM Compose is image-only and preserves the proxy and content-volume contr
   assert.deepEqual(service.ports ?? [], []);
   assert.deepEqual(service.volumes, ["content-viewer-content:/app/content"]);
   assert.ok(Object.hasOwn(service.networks ?? {}, "content-viewer-egress"));
-  assert.equal(service.networks?.["npm-proxy"]?.aliases?.[0], "content-viewer");
-  assert.equal(compose.networks?.["npm-proxy"]?.external, true);
-  assert.equal(compose.networks?.["npm-proxy"]?.name, "npm-proxy");
+  assert.equal(service.networks?.["nginxproxy-proxy-net"]?.aliases?.[0], "content-viewer");
+  assert.equal(compose.networks?.["nginxproxy-proxy-net"]?.external, true);
+  assert.equal(compose.networks?.["nginxproxy-proxy-net"]?.name, "nginxproxy_proxy-net");
 
   const environmentExample = await source(".env.example");
   assert.match(environmentExample, /^CONTENT_VIEWER_IMAGE=ghcr\.io\/mkronvold-wtg\/content-viewer:dev$/m);

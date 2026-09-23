@@ -11,7 +11,7 @@ repository was run against a deployment target.
 | --- | --- |
 | `Dockerfile` | Uses the official `node:26-alpine3.23` image pinned to an immutable digest for separate dependency and runtime stages. The runtime installs Git and CA certificates, retains only production dependencies and required server/theme assets, creates `/app/content` owned by `node`, runs as `USER node`, and health-checks `GET /api/health`. Backup/restore requirements apply only when that path is backed by a writable deployment volume; read-only cached clone volumes mounted there remain disposable caches. |
 | `docker-compose.yml` | Local Compose builds the service, tags it `content-viewer:local`, binds `127.0.0.1:8080:8080`, and mounts the logical named volume `content-viewer-content` at `/app/content`. |
-| `docker-compose.npm.yml` | The dockerhost/NPM-proxy target is image-only: it requires `CONTENT_VIEWER_IMAGE`, mounts the same logical volume at `/app/content`, exposes port `8080` only to Compose networks, and joins the external network named `npm-proxy`. It has no host `ports` mapping. |
+| `docker-compose.npm.yml` | The dockerhost/NPM-proxy target is image-only: it requires `CONTENT_VIEWER_IMAGE`, mounts the same logical volume at `/app/content`, exposes port `8080` only to Compose networks, and joins the external network named `nginxproxy_proxy-net`. It has no host `ports` mapping. |
 | `README.md` | Documents the local build-oriented Compose command and links this runbook for the image-only Dockerhost procedure. |
 | `package.json` | `npm run build` and `npm run check` syntax-check `server.mjs` using committed inputs. `npm run test:contracts` runs the explicit deterministic Node contract suite, and `npm run test:container` smoke-tests a supplied final image with an isolated no-network container and volume. Theme refresh is a separate maintenance action that requires an immutable full upstream commit SHA, as described in `README.md`. |
 | `.env.example` | Configures the Git-backed content clone under `/app/content` and identifies `CONTENT_VIEWER_GITHUB_TOKEN` as a read-only content-repository credential. |
@@ -22,7 +22,7 @@ repository was run against a deployment target.
 | Target | Repository command or configuration | Boundary |
 | --- | --- | --- |
 | Local development | `docker compose up -d --build` from `README.md` with `docker-compose.yml` | Host-only port binding at `127.0.0.1:8080`; image tag is `content-viewer:local`. |
-| Dockerhost behind NPM/proxy | `docker-compose.npm.yml` and `infra/docker/up.sh` | No host port is published by this file. The service is reachable on the external Compose network `npm-proxy` as `content-viewer:8080`. The Compose target is image-only and requires `CONTENT_VIEWER_IMAGE`; `up.sh` is the only repository restart path and never builds or removes the persistent volume. |
+| Dockerhost behind NPM/proxy | `docker-compose.npm.yml` and `infra/docker/up.sh` | No host port is published by this file. The service is reachable on the external Compose network `nginxproxy_proxy-net` as `content-viewer:8080`. The Compose target is image-only and requires `CONTENT_VIEWER_IMAGE`; `up.sh` is the only repository restart path and never builds or removes the persistent volume. |
 
 The logical volume declaration is `content-viewer-content` in both Compose
 files. The discovered Dockerhost project is `content-viewer`, so its persistent
