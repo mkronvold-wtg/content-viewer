@@ -286,7 +286,8 @@ test("user systemd templates run one safe cycle on the intended cadence", async 
   assert.match(service, /^TimeoutStopSec=2min$/m);
   assert.match(service, /^WorkingDirectory=%h\/src\/content-viewer$/m);
   assert.match(service, /^Environment=HOME=%h$/m);
-  assert.match(service, /^ExecStart=\/usr\/bin\/sg docker -c '%h\/src\/content-viewer\/infra\/docker\/autoupdate\.sh --config %h\/\.config\/content-viewer\/autoupdate\.conf --once'$/m);
+  assert.match(service, /^ExecStart=%h\/src\/content-viewer\/infra\/docker\/autoupdate\.sh --config %h\/\.config\/content-viewer\/autoupdate\.conf --once$/m);
+  assert.doesNotMatch(service, /\bsg docker\b/);
   assert.doesNotMatch(service, /^NoNewPrivileges=/m);
   assert.doesNotMatch(service, /\/home\/|token|password|secret/i);
   assert.match(timer, /^OnCalendar=\*:0\/30$/m);

@@ -150,7 +150,10 @@ Before enabling a timer, the Dockerhost operator must:
 4. Authenticate as the deployment user with the host-local Docker credential
    store for `ghcr.io`. The updater configuration contains no registry token
    and never runs `docker login`.
-5. Copy `infra/docker/content-viewer-autoupdate.conf.example` to
+5. Verify the deployment user's systemd user manager has Docker socket access,
+   for example with `systemd-run --user --wait --pipe --collect docker info`.
+   Do not add privileges in the unit itself.
+6. Copy `infra/docker/content-viewer-autoupdate.conf.example` to
    `~/.config/content-viewer/autoupdate.conf`, retain the exact allowlist, and
    restrict it to mode `0600`. Its required
    `AUTOUPDATE_PROJECT_NAME=content-viewer` value validates the Dockerhost
@@ -215,11 +218,10 @@ test "$(loginctl show-user <deployment-user> -p Linger --value)" = yes
 ```
 
 Install the parameterized user units and enable the 30-minute timer. The unit
-runs `autoupdate.sh --once` through `sg docker`, treats no-op exit `10` as
-successful, bounds stop recovery at two minutes, and uses a persistent timer
-with a five-minute randomized delay. It must not set `NoNewPrivileges=true`:
-lingering EL8 user managers often lack the `docker` supplementary group, and
-that flag blocks `sg` from entering it.
+runs `autoupdate.sh --once` with the deployment user manager's existing Docker
+socket access, treats no-op exit `10` as successful, bounds stop recovery at
+two minutes, and uses a persistent timer with a five-minute randomized delay.
+It does not add privileges or Docker credentials.
 
 ```sh
 mkdir -p ~/.config/systemd/user ~/.config/content-viewer
