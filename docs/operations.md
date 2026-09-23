@@ -140,8 +140,8 @@ Before enabling a timer, the Dockerhost operator must:
    rehearsal; a correctly classified `clone-cache` does not. The existing
    physical `/app/content` volume and Compose project identity must remain
    unchanged.
-2. Keep the deployment checkout at `%h/content-viewer`, or consistently adjust
-   the copied user unit's `%h/content-viewer` paths. The unit is parameterized
+2. Keep the deployment checkout at `%h/src/content-viewer`, or consistently adjust
+   the copied user unit's `%h/src/content-viewer` paths. The unit is parameterized
    with `%h`; it contains no username, secret, or host-specific absolute home
    path.
 3. Create the deployment directory's uncommitted `.env` from `.env.example`,
