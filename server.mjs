@@ -297,6 +297,53 @@ function parseRepoConfigs() {
     return repos;
 }
 
+function isManagedClonePath(repo) {
+    return pathsEqual(repo.path, path.join(DEFAULT_CONTENT_ROOT, repo.slug));
+}
+
+async function cleanupStaleManagedClones(repos) {
+    if (!repos.some(isManagedClonePath)) {
+        return;
+    }
+
+    let entries;
+    try {
+        entries = await fs.readdir(DEFAULT_CONTENT_ROOT, { withFileTypes: true });
+    } catch (error) {
+        if (error?.code === "ENOENT") {
+            return;
+        }
+        throw error;
+    }
+
+    const activePaths = repos.filter(isManagedClonePath).map((repo) => path.resolve(repo.path));
+    await Promise.all(entries.map(async (entry) => {
+        if (!entry.isDirectory() || sanitizeRepoSlug(entry.name) !== entry.name) {
+            return;
+        }
+
+        const candidatePath = path.resolve(DEFAULT_CONTENT_ROOT, entry.name);
+        if (
+            !isWithinDirectory(DEFAULT_CONTENT_ROOT, candidatePath) ||
+            activePaths.some((activePath) => pathsEqual(activePath, candidatePath)) ||
+            (PRIMARY_REPO_PATH && pathsEqual(PRIMARY_REPO_PATH, candidatePath))
+        ) {
+            return;
+        }
+
+        try {
+            const stat = await fs.stat(path.join(candidatePath, ".git"));
+            if (!stat.isDirectory()) {
+                return;
+            }
+        } catch {
+            return;
+        }
+
+        await fs.rm(candidatePath, { recursive: true, force: true });
+    }));
+}
+
 const CONFIGURED_REPOS = parseRepoConfigs();
 const DEFAULT_REPO_SLUG = CONFIGURED_REPOS[0].slug;
 
@@ -440,6 +487,8 @@ function extractFrontmatterList(frontmatter, keys) {
             const listMatch = inlineValue.match(/^\[(.*)\]$/);
             if (listMatch) {
                 values.push(...listMatch[1].split(",").map(cleanTag).filter(Boolean));
+            } else if (inlineValue.includes(",")) {
+                values.push(...inlineValue.split(",").map(cleanTag).filter(Boolean));
             } else {
                 values.push(cleanTag(inlineValue));
             }
@@ -1866,8 +1915,9 @@ function renderHtml(appState, initialView = {}) {
     }
 
     .markdown .table-wrapper {
-      width: max-content;
+      width: 100%;
       max-width: 100%;
+      box-sizing: border-box;
       border: 1px solid var(--theme-border);
       border-radius: 8px;
       background: var(--theme-surface);
@@ -1880,14 +1930,14 @@ function renderHtml(appState, initialView = {}) {
     }
 
     .markdown .table-scroll {
-      width: max-content;
+      width: 100%;
       max-width: 100%;
       overflow-x: auto;
       overflow-y: hidden;
     }
 
     .markdown table {
-      width: max-content;
+      width: auto;
       min-width: 100%;
       table-layout: auto;
       border-collapse: collapse;
@@ -4351,6 +4401,7 @@ async function startServer(instanceId, repoPath) {
     const repos = repoPath && !pathsEqual(repoPath, CONFIGURED_REPOS[0].path)
         ? [{ ...CONFIGURED_REPOS[0], slug: "content", label: "content", path: repoPath, url: await getGitRemoteUrl(repoPath), baseDir: "" }]
         : CONFIGURED_REPOS;
+    await cleanupStaleManagedClones(repos);
     const state = createAppState(instanceId, repos);
     const server = createServer((req, res) => {
         void handleRequest(state, req, res);
@@ -4371,6 +4422,7 @@ async function startServer(instanceId, repoPath) {
 }
 
 export async function startServerForTest(repos) {
+    await cleanupStaleManagedClones(repos);
     const state = createAppState("test", repos);
     const server = createServer((req, res) => { void handleRequest(state, req, res); });
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -4421,6 +4473,7 @@ async function startStandaloneServer() {
     const host = process.env.HOST ?? "0.0.0.0";
     const port = parsePort(process.env.PORT);
     const refreshIntervalMs = parseRefreshIntervalMs(process.env.CONTENT_VIEWER_REFRESH_INTERVAL_SECONDS);
+    await cleanupStaleManagedClones(CONFIGURED_REPOS);
     const state = createAppState("standalone", CONFIGURED_REPOS);
 
     const server = createServer((req, res) => {
