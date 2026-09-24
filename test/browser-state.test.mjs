@@ -305,6 +305,13 @@ test("toggles sidebar facet filters on repeated clicks", async () => {
         tagFilters: ["linux"],
         layerFilters: ["platform team"],
     });
+
+    const preservedQuery = evaluateFacetFilterFunctions(viewer, {
+        initialSearch: 'tag:Linux "exact  phrase" layer:"Platform  Team"',
+        initialFacet: "tags",
+    });
+    preservedQuery.addFacetFilter({ value: "linux", label: "Linux" });
+    assert.equal(preservedQuery.getSearchValue(), '"exact  phrase" layer:"Platform  Team"');
 });
 
 test("renders frontmatter metadata fields and localizes UTC timestamps", async () => {

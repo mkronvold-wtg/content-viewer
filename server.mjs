@@ -2580,7 +2580,7 @@ function renderHtml(appState, initialView = {}) {
       const normalizedValue = normalizeTag(item.value || item.label);
       const facetLabel = getFacetLabel();
       let removed = false;
-      let updatedQuery = String(searchInput.value ?? "").replace(/\\b(tag|layer):\\s*(?:"([^"]+)"|'([^']+)'|([^\\s]+))/gi, (match, facet, doubleQuoted, singleQuoted, bare) => {
+      let updatedQuery = String(searchInput.value ?? "").replace(/(^|\\s)\\b(tag|layer):\\s*(?:"([^"]+)"|'([^']+)'|([^\\s]+))/gi, (match, leadingWhitespace, facet, doubleQuoted, singleQuoted, bare) => {
         if (facet.toLowerCase() !== facetLabel) {
           return match;
         }
@@ -2589,13 +2589,13 @@ function renderHtml(appState, initialView = {}) {
           return match;
         }
         removed = true;
-        return " ";
+        return leadingWhitespace;
       });
       if (!removed) {
         const token = facetFilterToken(item);
         updatedQuery = [updatedQuery.trim(), token].filter(Boolean).join(" ");
       }
-      searchInput.value = updatedQuery.replace(/\s+/g, " ").trim();
+      searchInput.value = updatedQuery.trim();
 
       search();
     }
