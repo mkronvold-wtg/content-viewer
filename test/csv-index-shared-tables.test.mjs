@@ -82,7 +82,19 @@ before(async () => {
     await fs.rm(testRoot, { recursive: true, force: true });
     await fs.mkdir(path.join(repositoryPath, "docs"), { recursive: true });
     await fs.mkdir(path.join(repositoryPath, "outside"), { recursive: true });
-    await fs.writeFile(path.join(repositoryPath, "docs", "guide.md"), "# Guide\n\nMarkdown-only needle\n");
+    await fs.writeFile(path.join(repositoryPath, "docs", "guide.md"), `---
+title: Guide
+Created: 2026-09-22T14:30:00Z
+CreatedBy: alice
+LastEdit: bob
+Aliases:
+  - Quickstart
+  - Getting Started
+---
+# Guide
+
+Markdown-only needle
+`);
     await fs.writeFile(path.join(repositoryPath, "docs", "report.csv"), csvContent);
     await fs.writeFile(path.join(repositoryPath, "outside", "hidden.csv"), "Name,Secret\nHidden,outside-root\n");
     await fs.writeFile(path.join(repositoryPath, "docs", "ignored.txt"), "not indexed\n");
@@ -120,6 +132,12 @@ test("indexes CSV raw cell text and returns document format metadata", async () 
         assert.equal(markdownDocument.response.status, 200);
         assert.equal(markdownDocument.body.format, "markdown");
         assert.equal(markdownDocument.body.title, "Guide");
+        assert.deepEqual(markdownDocument.body.frontmatter, [
+            { key: "Created", label: "Created", value: "2026-09-22T14:30:00Z" },
+            { key: "CreatedBy", label: "Created By", value: "alice" },
+            { key: "LastEdit", label: "Last Edit", value: "bob" },
+            { key: "Aliases", label: "Aliases", value: ["Quickstart", "Getting Started"] },
+        ]);
     } finally {
         await server.close();
     }

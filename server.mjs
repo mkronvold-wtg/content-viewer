@@ -390,29 +390,34 @@ async function updateDisposableClone(repoState) {
 
 
 function extractFrontmatter(content) {
-    if (!content.startsWith("---\n") && !content.startsWith("---\r\n")) {
+    const frontmatter = extractFrontmatterBlock(content);
+    if (!frontmatter) {
         return {};
     }
-
-    const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/);
-    if (!match) {
-        return {};
-    }
-
-    const frontmatter = match[1];
     const titleMatch = frontmatter.match(/^title:\s*(.+)$/im);
     const tags = extractFrontmatterList(frontmatter, ["tags", "tag", "labels", "label"]);
     const layers = extractFrontmatterList(frontmatter, ["layers", "layer"]);
+    const fields = extractFrontmatterFields(frontmatter);
 
     return {
         title: titleMatch ? titleMatch[1].trim().replace(/^["']|["']$/g, "") : undefined,
         layers,
         tags,
+        fields,
     };
 }
 
 function stripFrontmatter(content) {
     return String(content ?? "").replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "");
+}
+
+function extractFrontmatterBlock(content) {
+    if (!content.startsWith("---\n") && !content.startsWith("---\r\n")) {
+        return "";
+    }
+
+    const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/);
+    return match ? match[1] : "";
 }
 
 function extractFrontmatterList(frontmatter, keys) {
@@ -450,6 +455,128 @@ function extractFrontmatterList(frontmatter, keys) {
         seen.add(normalized);
         return true;
     });
+}
+
+function extractFrontmatterFields(frontmatter) {
+    const fields = [];
+    const reservedKeys = new Set(["title", "tags", "tag", "labels", "label", "layers", "layer"]);
+    for (const entry of parseFrontmatterEntries(frontmatter)) {
+        if (reservedKeys.has(entry.key.toLowerCase())) {
+            continue;
+        }
+
+        const value = normalizeFrontmatterFieldValue(entry.value);
+        if (value === "" || (Array.isArray(value) && !value.length)) {
+            continue;
+        }
+
+        fields.push({
+            key: entry.key,
+            label: formatFrontmatterFieldLabel(entry.key),
+            value,
+        });
+    }
+    return fields;
+}
+
+function parseFrontmatterEntries(frontmatter) {
+    const entries = [];
+    const lines = String(frontmatter ?? "").split(/\r?\n/);
+    for (let index = 0; index < lines.length; index += 1) {
+        const line = lines[index];
+        if (!line || /^\s/.test(line) || /^\s*#/.test(line)) {
+            continue;
+        }
+
+        const match = line.match(/^([^:#][^:]*?):[ \t]*(.*)$/);
+        if (!match) {
+            continue;
+        }
+
+        const key = match[1].trim();
+        const inlineValue = match[2];
+        if (inlineValue.trim()) {
+            entries.push({ key, value: parseInlineFrontmatterValue(inlineValue) });
+            continue;
+        }
+
+        const blockLines = [];
+        while (index + 1 < lines.length) {
+            const nextLine = lines[index + 1];
+            if (nextLine && !/^\s/.test(nextLine)) {
+                break;
+            }
+            index += 1;
+            blockLines.push(nextLine);
+        }
+        entries.push({ key, value: parseBlockFrontmatterValue(blockLines) });
+    }
+    return entries;
+}
+
+function parseInlineFrontmatterValue(value) {
+    const trimmed = String(value ?? "").trim();
+    const listMatch = trimmed.match(/^\[(.*)\]$/);
+    if (listMatch) {
+        return listMatch[1]
+            .split(",")
+            .map((item) => unquoteFrontmatterValue(item))
+            .filter(Boolean);
+    }
+    return unquoteFrontmatterValue(trimmed);
+}
+
+function parseBlockFrontmatterValue(lines) {
+    const cleaned = lines
+        .map((line) => String(line ?? "").replace(/^\s+/, ""))
+        .filter((line, index, allLines) => line || allLines.some((candidate) => candidate));
+    if (!cleaned.length) {
+        return "";
+    }
+
+    const listItems = cleaned
+        .filter(Boolean)
+        .map((line) => line.match(/^-\s+(.+)$/)?.[1] ?? null);
+    if (listItems.every((item) => item !== null)) {
+        return listItems.map((item) => unquoteFrontmatterValue(item)).filter(Boolean);
+    }
+
+    return cleaned.join("\n").trim();
+}
+
+function unquoteFrontmatterValue(value) {
+    const trimmed = String(value ?? "").trim();
+    if (!trimmed) {
+        return "";
+    }
+
+    if ((trimmed.startsWith("\"") && trimmed.endsWith("\"")) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+        return trimmed.slice(1, -1);
+    }
+
+    return trimmed;
+}
+
+function normalizeFrontmatterFieldValue(value) {
+    if (Array.isArray(value)) {
+        return value.map((item) => String(item)).filter(Boolean);
+    }
+    if (typeof value === "string") {
+        return value;
+    }
+    if (value === null || value === undefined) {
+        return "";
+    }
+    return String(value);
+}
+
+function formatFrontmatterFieldLabel(key) {
+    return String(key ?? "")
+        .replace(/[_-]+/g, " ")
+        .replace(/([a-z\d])([A-Z])/g, "$1 $2")
+        .replace(/\s+/g, " ")
+        .trim()
+        .replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
 function extractTitle(content, filePath) {
@@ -623,6 +750,7 @@ async function buildIndex(repo) {
                     title,
                     layers: frontmatter.layers ?? [],
                     tags: frontmatter.tags ?? [],
+                    frontmatter: frontmatter.fields ?? [],
                     size: stat.size,
                     modified: stat.mtime.toISOString(),
                     content,
@@ -1130,7 +1258,8 @@ function renderHtml(appState, initialView = {}) {
     body.presenting .nav-rail,
     body.presenting .tag-rail,
     body.presenting .toolbar,
-    body.presenting #doc-tags {
+    body.presenting #doc-tags,
+    body.presenting #doc-frontmatter {
       display: none;
     }
 
@@ -1917,6 +2046,32 @@ function renderHtml(appState, initialView = {}) {
       font-size: 12px;
     }
 
+    .frontmatter-list {
+      display: grid;
+      grid-template-columns: max-content minmax(0, 1fr);
+      gap: 4px 10px;
+      margin: 10px 0 0;
+      padding: 0;
+    }
+
+    .frontmatter-list[hidden] {
+      display: none;
+    }
+
+    .frontmatter-list dt,
+    .frontmatter-list dd {
+      margin: 0;
+    }
+
+    .frontmatter-list dt {
+      color: var(--theme-chrome-muted-text);
+      font-weight: var(--font-weight-semibold, 600);
+    }
+
+    .frontmatter-list dd time {
+      color: inherit;
+    }
+
     @media (max-width: 760px) {
       main {
         display: block;
@@ -2042,6 +2197,7 @@ function renderHtml(appState, initialView = {}) {
         <div>
           <h2 id="doc-title">Select a document</h2>
           <div id="doc-path" class="meta"></div>
+          <dl id="doc-frontmatter" class="meta frontmatter-list" hidden></dl>
         </div>
       </div>
       <div id="doc-tags"></div>
@@ -2093,6 +2249,7 @@ function renderHtml(appState, initialView = {}) {
     const statusElement = document.getElementById("status");
     const docTitle = document.getElementById("doc-title");
     const docPath = document.getElementById("doc-path");
+    const docFrontmatter = document.getElementById("doc-frontmatter");
     const docTags = document.getElementById("doc-tags");
     const docContent = document.getElementById("doc-content");
     const documentPanel = document.querySelector(".document");
@@ -2254,6 +2411,31 @@ function renderHtml(appState, initialView = {}) {
         return '<span class="document-type-pill" aria-label="CSV document">(csv)</span>';
       }
       return '<span class="document-type-pill" aria-label="Markdown document">(md)</span>';
+    }
+
+    function isUtcDateTimeValue(value) {
+      const text = String(value ?? "").trim();
+      if (!text || !(/[zZ]$|[+-]\\d{2}:?\\d{2}$/.test(text))) {
+        return false;
+      }
+      return Number.isFinite(Date.parse(text));
+    }
+
+    function frontmatterFieldValueHtml(value) {
+      if (Array.isArray(value)) {
+        return value.map((item) => frontmatterFieldValueHtml(item)).join(", ");
+      }
+      if (isUtcDateTimeValue(value)) {
+        const datetime = String(value).trim();
+        return '<time datetime="' + escapeHtml(datetime) + '">' + escapeHtml(new Date(datetime).toLocaleString()) + "</time>";
+      }
+      return escapeHtml(String(value ?? "")).replaceAll("\\n", "<br>");
+    }
+
+    function renderFrontmatterFields(frontmatter) {
+      return (Array.isArray(frontmatter) ? frontmatter : [])
+        .map((field) => '<dt>' + escapeHtml(field.label || field.key || "") + '</dt><dd>' + frontmatterFieldValueHtml(field.value) + "</dd>")
+        .join("");
     }
 
     function navigationResultHtml(result) {
@@ -3675,6 +3857,8 @@ function renderHtml(appState, initialView = {}) {
       document.title = documentPageTitle(path);
       docTitle.textContent = "Loading...";
       docPath.textContent = path;
+      docFrontmatter.innerHTML = "";
+      docFrontmatter.hidden = true;
       docTags.innerHTML = "";
       docContent.className = "markdown empty";
       docContent.textContent = "Loading document...";
@@ -3685,6 +3869,8 @@ function renderHtml(appState, initialView = {}) {
         currentPageIndex = 0;
         docTitle.textContent = doc.title;
         docPath.textContent = doc.path + " · " + new Date(doc.modified).toLocaleString();
+        docFrontmatter.innerHTML = renderFrontmatterFields(doc.frontmatter);
+        docFrontmatter.hidden = !doc.frontmatter.length;
         document.title = documentPageTitle(doc.path);
         docTags.innerHTML = doc.tags.map((tag) => '<span class="pill">' + escapeHtml(tag) + "</span>").join("");
         renderActiveTagList();
@@ -3701,6 +3887,8 @@ function renderHtml(appState, initialView = {}) {
         }
       } catch (error) {
         docTitle.textContent = "Could not load document";
+        docFrontmatter.innerHTML = "";
+        docFrontmatter.hidden = true;
         docContent.textContent = error.message;
       }
     }
@@ -4119,6 +4307,7 @@ async function handleRequest(appState, req, res) {
                 title: doc.title,
                 layers: doc.layers,
                 tags: doc.tags,
+                frontmatter: doc.frontmatter,
                 modified: doc.modified,
                 size: doc.size,
                 content: doc.content,
