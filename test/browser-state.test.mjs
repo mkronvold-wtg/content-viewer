@@ -226,6 +226,30 @@ function evaluateNavigationPreviewFunctions(viewer, storedValue = null) {
     return { ...functions, values, attributes, activeClasses, navPreviewToggle, resultsElement };
 }
 
+function evaluateFacetFilterFunctions(viewer, { initialSearch = "", initialFacet = "tags" } = {}) {
+    const source = ["cleanTag", "normalizeTag", "parseTextTerms", "parseSearchQuery", "getFacetLabel", "facetFilterToken", "addFacetFilter"]
+        .map((name) => viewerFunction(viewer, name))
+        .join("\n");
+    return Function(
+        "initialSearch",
+        "initialFacet",
+        `${source.replaceAll("\\\\", "\\")}
+        const searchInput = { value: initialSearch };
+        let tagFacet = initialFacet;
+        let searches = 0;
+        function search() {
+            searches += 1;
+        }
+        return {
+            addFacetFilter,
+            parseSearchQuery,
+            getSearchValue: () => searchInput.value,
+            getSearchCount: () => searches,
+            setTagFacet: (value) => { tagFacet = value; },
+        };`,
+    )(initialSearch, initialFacet);
+}
+
 function evaluateNavigationResultRenderer(viewer) {
     const source = ["escapeHtml", "highlightText", "displayResultPath", "documentTypePill", "navigationResultHtml"]
         .map((name) => viewerFunction(viewer, name))
@@ -255,6 +279,39 @@ test("renders Markdown and CSV type pills in navigation entries", async () => {
     assert.match(csv, /<span class="result-path">reports<\/span>/);
 
     assert.match(viewer, /\.document-type-pill \{\s+flex: 0 0 auto;\s+padding: 1px 5px;\s+border: 1px solid color-mix\(in srgb, var\(--theme-border\) 80%, transparent\);/);
+});
+
+test("toggles sidebar facet filters on repeated clicks", async () => {
+    const serverPath = fileURLToPath(new URL("../server.mjs", import.meta.url));
+    const serverSource = await fs.readFile(serverPath, "utf8");
+    const viewer = viewerSource(serverSource);
+    const facets = evaluateFacetFilterFunctions(viewer, { initialSearch: 'guide layer:"Platform Team"', initialFacet: "tags" });
+
+    facets.addFacetFilter({ value: "linux", label: "Linux" });
+    assert.equal(facets.getSearchValue(), 'guide layer:"Platform Team" tag:Linux');
+    assert.equal(facets.getSearchCount(), 1);
+
+    facets.addFacetFilter({ value: "linux", label: "Linux" });
+    assert.equal(facets.getSearchValue(), 'guide layer:"Platform Team"');
+    assert.equal(facets.getSearchCount(), 2);
+
+    facets.setTagFacet("layer");
+    facets.addFacetFilter({ value: "Platform Team", label: "Platform Team" });
+    assert.equal(facets.getSearchValue(), "guide");
+    assert.equal(facets.getSearchCount(), 3);
+
+    assert.deepEqual(facets.parseSearchQuery('guide tag:linux layer:"Platform Team"'), {
+        tokens: ["guide"],
+        tagFilters: ["linux"],
+        layerFilters: ["platform team"],
+    });
+
+    const preservedQuery = evaluateFacetFilterFunctions(viewer, {
+        initialSearch: 'tag:Linux "exact  phrase" layer:"Platform  Team"',
+        initialFacet: "tags",
+    });
+    preservedQuery.addFacetFilter({ value: "linux", label: "Linux" });
+    assert.equal(preservedQuery.getSearchValue(), '"exact  phrase" layer:"Platform  Team"');
 });
 
 test("renders frontmatter metadata fields and localizes UTC timestamps", async () => {
