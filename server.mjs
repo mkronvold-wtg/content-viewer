@@ -440,6 +440,8 @@ function extractFrontmatterList(frontmatter, keys) {
             const listMatch = inlineValue.match(/^\[(.*)\]$/);
             if (listMatch) {
                 values.push(...listMatch[1].split(",").map(cleanTag).filter(Boolean));
+            } else if (inlineValue.includes(",")) {
+                values.push(...inlineValue.split(",").map(cleanTag).filter(Boolean));
             } else {
                 values.push(cleanTag(inlineValue));
             }

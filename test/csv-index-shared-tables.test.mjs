@@ -84,6 +84,7 @@ before(async () => {
     await fs.mkdir(path.join(repositoryPath, "outside"), { recursive: true });
     await fs.writeFile(path.join(repositoryPath, "docs", "guide.md"), `---
 title: Guide
+tags: linux, performance, bash
 Created: 2026-09-22T14:30:00Z
 CreatedBy: alice
 LastEdit: bob
@@ -115,6 +116,18 @@ test("indexes CSV raw cell text and returns document format metadata", async () 
             allDocuments.body.results.map((result) => [result.path, result.format]).sort((left, right) => left[0].localeCompare(right[0])),
             [["guide.md", "markdown"], ["report.csv", "csv"]],
         );
+        assert.deepEqual(
+            allDocuments.body.tags,
+            [
+                { value: "bash", label: "bash", count: 1 },
+                { value: "linux", label: "linux", count: 1 },
+                { value: "performance", label: "performance", count: 1 },
+            ],
+        );
+        assert.deepEqual(
+            allDocuments.body.results.find((result) => result.path === "guide.md")?.tags,
+            ["linux", "performance", "bash"],
+        );
 
         const csvSearch = await api(server, "/api/search?repo=content&q=embedded");
         assert.equal(csvSearch.response.status, 200);
@@ -132,6 +145,7 @@ test("indexes CSV raw cell text and returns document format metadata", async () 
         assert.equal(markdownDocument.response.status, 200);
         assert.equal(markdownDocument.body.format, "markdown");
         assert.equal(markdownDocument.body.title, "Guide");
+        assert.deepEqual(markdownDocument.body.tags, ["linux", "performance", "bash"]);
         assert.deepEqual(markdownDocument.body.frontmatter, [
             { key: "Created", label: "Created", value: "2026-09-22T14:30:00Z" },
             { key: "CreatedBy", label: "Created By", value: "alice" },
