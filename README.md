@@ -184,9 +184,11 @@ repository does not configure or verify either control.
 The approved Dockerhost auto-update path is limited to the **development-only
 mutable GHCR `:dev` channel** described in
 [`docs/operations.md`](docs/operations.md). It is not a production promotion
-path and is not installed by this repository. It requires the copied-volume
-rehearsal, host-local Docker credential-store setup, and user-timer procedure
-in that runbook before an operator enables it.
+path and is not installed by this repository. Before enabling it, operators
+must classify the content volume: stateful data requires the copied-volume
+rehearsal, while a fully reproducible read-only Git `clone-cache` does not.
+Both classifications require host-local Docker credential-store setup and the
+user-timer procedure in that runbook.
 
 ## Docker Compose quick start
 

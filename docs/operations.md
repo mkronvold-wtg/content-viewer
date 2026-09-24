@@ -11,7 +11,7 @@ repository was run against a deployment target.
 | --- | --- |
 | `Dockerfile` | Uses the official `node:26-alpine3.23` image pinned to an immutable digest for separate dependency and runtime stages. The runtime installs Git and CA certificates, retains only production dependencies and required server/theme assets, creates `/app/content` owned by `node`, runs as `USER node`, and health-checks `GET /api/health`. Backup/restore requirements apply only when that path is backed by a writable deployment volume; read-only cached clone volumes mounted there remain disposable caches. |
 | `docker-compose.yml` | Local Compose builds the service, tags it `content-viewer:local`, binds `127.0.0.1:8080:8080`, and mounts the logical named volume `content-viewer-content` at `/app/content`. |
-| `docker-compose.npm.yml` | The dockerhost/NPM-proxy target is image-only: it requires `CONTENT_VIEWER_IMAGE`, mounts the same logical volume at `/app/content`, exposes port `8080` only to Compose networks, and joins the external network named `npm-proxy`. It has no host `ports` mapping. |
+| `docker-compose.npm.yml` | The dockerhost/NPM-proxy target is image-only: it requires `CONTENT_VIEWER_IMAGE`, mounts the same logical volume at `/app/content`, exposes port `8080` only to Compose networks, and joins the external network named `nginxproxy_proxy-net`. It has no host `ports` mapping. |
 | `README.md` | Documents the local build-oriented Compose command and links this runbook for the image-only Dockerhost procedure. |
 | `package.json` | `npm run build` and `npm run check` syntax-check `server.mjs` using committed inputs. `npm run test:contracts` runs the explicit deterministic Node contract suite, and `npm run test:container` smoke-tests a supplied final image with an isolated no-network container and volume. Theme refresh is a separate maintenance action that requires an immutable full upstream commit SHA, as described in `README.md`. |
 | `.env.example` | Configures the Git-backed content clone under `/app/content` and identifies `CONTENT_VIEWER_GITHUB_TOKEN` as a read-only content-repository credential. |
@@ -22,7 +22,7 @@ repository was run against a deployment target.
 | Target | Repository command or configuration | Boundary |
 | --- | --- | --- |
 | Local development | `docker compose up -d --build` from `README.md` with `docker-compose.yml` | Host-only port binding at `127.0.0.1:8080`; image tag is `content-viewer:local`. |
-| Dockerhost behind NPM/proxy | `docker-compose.npm.yml` and `infra/docker/up.sh` | No host port is published by this file. The service is reachable on the external Compose network `npm-proxy` as `content-viewer:8080`. The Compose target is image-only and requires `CONTENT_VIEWER_IMAGE`; `up.sh` is the only repository restart path and never builds or removes the persistent volume. |
+| Dockerhost behind NPM/proxy | `docker-compose.npm.yml` and `infra/docker/up.sh` | No host port is published by this file. The service is reachable on the external Compose network `nginxproxy_proxy-net` as `content-viewer:8080`. The Compose target is image-only and requires `CONTENT_VIEWER_IMAGE`; `up.sh` is the only repository restart path and never builds or removes the persistent volume. |
 
 The logical volume declaration is `content-viewer-content` in both Compose
 files. The discovered Dockerhost project is `content-viewer`, so its persistent
@@ -64,36 +64,46 @@ The commands in this table require dockerhost access and are not verified by
 this repository. They are safe inspection guidance only after the operator
 has supplied the actual `PROJECT`, `CONTAINER`, `IMAGE`, and `VOLUME` values.
 
-## Persistent-volume safety contract
+## Content-volume data classification and safety contract
 
-`/app/content` holds the Git content clone used for initial clone,
-`git pull --ff-only`, and indexing. Apply the contract that matches the mount:
+`/app/content` holds the Git clone used for initial clone, `git pull
+--ff-only`, and indexing. Before enabling a runtime updater, the Dockerhost
+operator must explicitly set `AUTOUPDATE_CONTENT_VOLUME_CLASS` in the
+protected updater configuration to one of these classifications:
 
-- **Writable deployment volume:** treat the physical named volume as
-  deployment-managed clone state. Preserve it across restarts and follow the
-  backup/restore and copied-volume rehearsal steps below before a runtime
-  change.
-- **Read-only cached clone volume:** treat the mount as a disposable cache.
-  Because the application rehydrates the clone from the configured remote and branch, host-level backup, restore, and copied-volume rehearsal are not required for that read-only cache. Preserve the remote/branch configuration and recreate the cache from origin when needed.
+1. `stateful` (the default) applies when the volume includes application data,
+   operator-maintained files, generated data that cannot be recreated, or any
+   other authoritative state.
+2. `clone-cache` applies only when the volume is exclusively a reproducible
+   cache of read-only source data from its configured Git remote and branch.
+   The clone may be discarded and rebuilt without loss of application or
+   operator-authored data. It must not contain manual edits, uploads,
+   credentials, generated authoritative state, or content from a remote that
+   the deployment cannot still read.
+
+For **both** classifications:
 
 1. **Never run `docker compose down -v`** for either deployment target. The
    `-v` option removes named volumes and can destroy the content clone.
-2. For the writable Dockerhost deployment volume, confirm that the actual
-   project is `content-viewer` and the mounted volume is
-   `content-viewer_content-viewer-content` using the inspection action in the
-   evidence table. Refuse the cutover if either differs.
-3. Before a runtime change to that writable deployment volume, the dockerhost
-   owner must make a restorable backup with an approved host backup procedure.
-   Record the archive or snapshot identifier, source volume, creation time,
-   checksum or storage integrity evidence, and restore procedure.
-4. Before promotion, the dockerhost owner must restore that backup into a
-   **copied, non-production volume** and perform a forward/rollback rehearsal:
-   deploy the proposed runtime against the copy, collect the health response,
-   exercise the expected clone/index behavior, redeploy the prior runtime
-   against the same copy, and collect health again.
-5. The rehearsal record must identify the source volume, copied-volume name,
-   proposed and prior image digests, backup/restore evidence, health results,
-   and the operator. A failed or missing rehearsal blocks the runtime change.
+2. Confirm that the actual project is `content-viewer` and the mounted volume
+   is `content-viewer_content-viewer-content` using the inspection action in
+   the evidence table. Refuse the cutover if either differs.
+3. Preserve the configured repository URL, branch, and read credential outside
+   the volume, and verify clone/index/health behavior after a runtime change.
+
+For a **stateful** volume, before a runtime change the Dockerhost owner must
+make a restorable backup with an approved host procedure, then restore that
+backup into a **copied, non-production volume** for a forward/rollback
+rehearsal. Record the archive or snapshot identifier, source and copied-volume
+names, creation time, checksum or storage-integrity evidence, proposed and
+prior image digests, health results, restore procedure, and operator. A failed
+or missing rehearsal blocks the runtime change.
+
+A correctly classified **reproducible clone-cache** volume does not require
+backup or a copied-volume rehearsal for an image update or development
+auto-update timer. It is a read-only cached clone volume for policy purposes:
+backup, restore, and copied-volume rehearsal are not required. The operator
+must still retain the no-volume-removal rule and verify that it can recreate the cache from origin using the configured private/public remote after the update.
 
 For writable deployment volumes, backup, restore, copied-volume creation, and
 deployment switching are deployment-only operator actions. This repository
@@ -123,12 +133,14 @@ provenance and its test together; do not edit its safety logic locally.
 
 Before enabling a timer, the Dockerhost operator must:
 
-1. Complete the copied-volume forward/rollback rehearsal in the
-   [persistent-volume safety contract](#persistent-volume-safety-contract).
-   The existing physical `/app/content` volume and Compose project identity
-   must remain unchanged.
-2. Keep the deployment checkout at `%h/content-viewer`, or consistently adjust
-   the copied user unit's `%h/content-viewer` paths. The unit is parameterized
+1. Set `AUTOUPDATE_CONTENT_VOLUME_CLASS` according to the
+   [content-volume data classification and safety contract](#content-volume-data-classification-and-safety-contract).
+   A `stateful` classification requires the copied-volume forward/rollback
+   rehearsal; a correctly classified `clone-cache` does not. The existing
+   physical `/app/content` volume and Compose project identity must remain
+   unchanged.
+2. Keep the deployment checkout at `%h/src/content-viewer`, or consistently adjust
+   the copied user unit's `%h/src/content-viewer` paths. The unit is parameterized
    with `%h`; it contains no username, secret, or host-specific absolute home
    path.
 3. Create the deployment directory's uncommitted `.env` from `.env.example`,
@@ -137,7 +149,10 @@ Before enabling a timer, the Dockerhost operator must:
 4. Authenticate as the deployment user with the host-local Docker credential
    store for `ghcr.io`. The updater configuration contains no registry token
    and never runs `docker login`.
-5. Copy `infra/docker/content-viewer-autoupdate.conf.example` to
+5. Verify the deployment user's systemd user manager has Docker socket access,
+   for example with `systemd-run --user --wait --pipe --collect docker info`.
+   Do not add privileges in the unit itself.
+6. Copy `infra/docker/content-viewer-autoupdate.conf.example` to
    `~/.config/content-viewer/autoupdate.conf`, retain the exact allowlist, and
    restrict it to mode `0600`. Its required
    `AUTOUPDATE_PROJECT_NAME=content-viewer` value validates the Dockerhost
@@ -161,10 +176,11 @@ interrupted candidates retain usable rollback tags.
 
 ### First image-only cutover (one time)
 
-The currently deployed build-origin image has no GHCR `RepoDigest`, so an
+When the currently deployed build-origin image has no GHCR `RepoDigest`, an
 updater `--dry-run` **must not** be the first image-only action. After the
-copied-volume rehearsal and the required host preparation above, run this
-one-time controlled bootstrap from the deployment checkout:
+required host preparation above (and the copied-volume rehearsal when the
+volume is `stateful`), run this one-time controlled bootstrap from the
+deployment checkout:
 
 ```sh
 bash templates/compose-autoupdate/tests/autoupdate-template-test.sh
@@ -191,9 +207,9 @@ validated entrypoint:
 
 ### User timer installation, disablement, and rollback
 
-Only after the copied-volume rehearsal, one-time bootstrap, and updater dry
-run succeed, enable lingering for the deployment user so the user timer
-survives logout and boot:
+Only after the required volume safety gate, one-time bootstrap when needed,
+and updater dry run succeed, enable lingering for the deployment user so the
+user timer survives logout and boot:
 
 ```sh
 sudo loginctl enable-linger <deployment-user>
@@ -201,11 +217,10 @@ test "$(loginctl show-user <deployment-user> -p Linger --value)" = yes
 ```
 
 Install the parameterized user units and enable the 30-minute timer. The unit
-runs `autoupdate.sh --once` through `sg docker`, treats no-op exit `10` as
-successful, bounds stop recovery at two minutes, and uses a persistent timer
-with a five-minute randomized delay. It must not set `NoNewPrivileges=true`:
-lingering EL8 user managers often lack the `docker` supplementary group, and
-that flag blocks `sg` from entering it.
+runs `autoupdate.sh --once` with the deployment user manager's existing Docker
+socket access, treats no-op exit `10` as successful, bounds stop recovery at
+two minutes, and uses a persistent timer with a five-minute randomized delay.
+It does not add privileges or Docker credentials.
 
 ```sh
 mkdir -p ~/.config/systemd/user ~/.config/content-viewer

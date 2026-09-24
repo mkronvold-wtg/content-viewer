@@ -10,6 +10,11 @@ AUTOUPDATE_PROJECT_NAME=content-viewer
 export AUTOUPDATE_PROJECT_NAME
 export COMPOSE_PROJECT_NAME="$AUTOUPDATE_PROJECT_NAME"
 
+# Stateful volumes require backup and copied-volume rehearsal before timer
+# enablement. Set clone-cache only for a fully reproducible Git clone with no
+# application-authored or operator-maintained data.
+AUTOUPDATE_CONTENT_VOLUME_CLASS=stateful
+
 AUTOUPDATE_ALLOWED_SERVICES="content-viewer"
 AUTOUPDATE_ALLOWED_IMAGES="
 content-viewer=ghcr.io/mkronvold-wtg/content-viewer:dev

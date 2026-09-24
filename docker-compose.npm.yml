@@ -7,14 +7,14 @@ services:
     environment:
       HOST: 0.0.0.0
       PORT: 8080
-      CONTENT_VIEWER_REPO_PATH: /app/content
+      CONTENT_VIEWER_REPO_PATH: "${CONTENT_VIEWER_REPO_PATH:-/app/content}"
     expose:
       - "8080"
     volumes:
       - content-viewer-content:/app/content
     networks:
       content-viewer-egress:
-      npm-proxy:
+      nginxproxy-proxy-net:
         aliases:
           - content-viewer
 
@@ -23,6 +23,6 @@ volumes:
 
 networks:
   content-viewer-egress:
-  npm-proxy:
+  nginxproxy-proxy-net:
     external: true
-    name: npm-proxy
+    name: nginxproxy_proxy-net

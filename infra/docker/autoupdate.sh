@@ -32,6 +32,14 @@ source "$CONFIG_PATH"
 source "$SCRIPT_DIR/compose-project.sh"
 validate_project_name
 
+case "${AUTOUPDATE_CONTENT_VOLUME_CLASS:-stateful}" in
+  stateful|clone-cache) ;;
+  *)
+    printf 'AUTOUPDATE_CONTENT_VOLUME_CLASS must be stateful or clone-cache.\n' >&2
+    exit 2
+    ;;
+esac
+
 # The canonical vendor uses Docker Compose's standard project environment for
 # every generated Compose command. Keep it aligned with the validated wrapper.
 export COMPOSE_PROJECT_NAME="$PROJECT"

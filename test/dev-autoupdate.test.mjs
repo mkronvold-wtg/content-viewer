@@ -127,12 +127,13 @@ test("NPM Compose is image-only and preserves the proxy and content-volume contr
   assert.equal(Object.hasOwn(service, "build"), false);
   assert.equal(service.image, "${CONTENT_VIEWER_IMAGE:?CONTENT_VIEWER_IMAGE must be set}");
   assert.equal(service.restart, "unless-stopped");
+  assert.equal(service.environment?.CONTENT_VIEWER_REPO_PATH, "${CONTENT_VIEWER_REPO_PATH:-/app/content}");
   assert.deepEqual(service.ports ?? [], []);
   assert.deepEqual(service.volumes, ["content-viewer-content:/app/content"]);
   assert.ok(Object.hasOwn(service.networks ?? {}, "content-viewer-egress"));
-  assert.equal(service.networks?.["npm-proxy"]?.aliases?.[0], "content-viewer");
-  assert.equal(compose.networks?.["npm-proxy"]?.external, true);
-  assert.equal(compose.networks?.["npm-proxy"]?.name, "npm-proxy");
+  assert.equal(service.networks?.["nginxproxy-proxy-net"]?.aliases?.[0], "content-viewer");
+  assert.equal(compose.networks?.["nginxproxy-proxy-net"]?.external, true);
+  assert.equal(compose.networks?.["nginxproxy-proxy-net"]?.name, "nginxproxy_proxy-net");
 
   const environmentExample = await source(".env.example");
   assert.match(environmentExample, /^CONTENT_VIEWER_IMAGE=ghcr\.io\/mkronvold-wtg\/content-viewer:dev$/m);
@@ -148,6 +149,7 @@ test("content-viewer configuration permits only the explicit GHCR development im
   assert.match(config, /^AUTOUPDATE_PROJECT_NAME=content-viewer$/m);
   assert.match(config, /^export AUTOUPDATE_PROJECT_NAME$/m);
   assert.match(config, /^export COMPOSE_PROJECT_NAME="\$AUTOUPDATE_PROJECT_NAME"$/m);
+  assert.match(config, /^AUTOUPDATE_CONTENT_VOLUME_CLASS=stateful$/m);
   assert.match(config, /^AUTOUPDATE_ALLOWED_SERVICES="content-viewer"$/m);
   assert.match(config, /^content-viewer=ghcr\.io\/mkronvold-wtg\/content-viewer:dev$/m);
   assert.match(config, /^AUTOUPDATE_REGISTRY_PROFILE=ghcr-dev$/m);
@@ -212,6 +214,7 @@ test("application wrappers preserve image-only and named-volume safety", async (
   assert.match(health, /RETRY_SECONDS=3/);
   assert.match(updater, /source "\$CONFIG_PATH"/);
   assert.match(updater, /validate_project_name/);
+  assert.match(updater, /AUTOUPDATE_CONTENT_VOLUME_CLASS must be stateful or clone-cache/);
   assert.match(updater, /export COMPOSE_PROJECT_NAME="\$PROJECT"/);
   assert.match(updater, /templates\/compose-autoupdate\/autoupdate\.sh/);
   assert.match(updater, /"\$\{ORIGINAL_ARGS\[@\]\}"/);
@@ -281,9 +284,10 @@ test("user systemd templates run one safe cycle on the intended cadence", async 
   assert.doesNotMatch(timer, /\r/);
   assert.match(service, /^SuccessExitStatus=10$/m);
   assert.match(service, /^TimeoutStopSec=2min$/m);
-  assert.match(service, /^WorkingDirectory=%h\/content-viewer$/m);
+  assert.match(service, /^WorkingDirectory=%h\/src\/content-viewer$/m);
   assert.match(service, /^Environment=HOME=%h$/m);
-  assert.match(service, /^ExecStart=\/usr\/bin\/sg docker -c '%h\/content-viewer\/infra\/docker\/autoupdate\.sh --config %h\/\.config\/content-viewer\/autoupdate\.conf --once'$/m);
+  assert.match(service, /^ExecStart=%h\/src\/content-viewer\/infra\/docker\/autoupdate\.sh --config %h\/\.config\/content-viewer\/autoupdate\.conf --once$/m);
+  assert.doesNotMatch(service, /\bsg docker\b/);
   assert.doesNotMatch(service, /^NoNewPrivileges=/m);
   assert.doesNotMatch(service, /\/home\/|token|password|secret/i);
   assert.match(timer, /^OnCalendar=\*:0\/30$/m);
@@ -307,6 +311,7 @@ test("operator documentation keeps the development channel and volume safety exp
   assert.match(documentation, /read-only cached clone volumes?/i);
   assert.match(documentation, /backup, restore, and copied-volume rehearsal are not required/i);
   assert.match(documentation, /recreate the cache from origin/i);
+  assert.match(documentation, /reproducible.*clone-cache/i);
   assert.match(documentation, /Never run `docker compose down -v`/);
   assert.match(documentation, /not installed/i);
   assert.match(documentation, /content-viewer_content-viewer-content/);
