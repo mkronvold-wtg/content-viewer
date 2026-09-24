@@ -1866,8 +1866,9 @@ function renderHtml(appState, initialView = {}) {
     }
 
     .markdown .table-wrapper {
-      width: max-content;
+      width: 100%;
       max-width: 100%;
+      box-sizing: border-box;
       border: 1px solid var(--theme-border);
       border-radius: 8px;
       background: var(--theme-surface);
@@ -1880,15 +1881,15 @@ function renderHtml(appState, initialView = {}) {
     }
 
     .markdown .table-scroll {
-      width: max-content;
+      width: 100%;
       max-width: 100%;
       overflow-x: auto;
       overflow-y: hidden;
     }
 
     .markdown table {
-      width: max-content;
-      min-width: 100%;
+      width: 100%;
+      max-width: 100%;
       table-layout: auto;
       border-collapse: collapse;
       font-size: 13px;
