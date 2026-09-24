@@ -31,7 +31,7 @@ jobs:
       queue_clear: ${{ steps.decision.outputs.queue_clear }}
     steps:
       - name: Check out current main
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: main
           persist-credentials: false
@@ -84,7 +84,7 @@ jobs:
       base_sha: ${{ steps.scanned-base.outputs.sha }}
     steps:
       - name: Check out current main with read-only fetch credentials
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: main
           # This scheduled scan re-fetches trusted main below. The workflow-level
@@ -246,7 +246,7 @@ jobs:
       issues: write
     steps:
       - name: Check out current main with write credentials
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: main
           persist-credentials: true
