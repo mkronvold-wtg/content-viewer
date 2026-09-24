@@ -99,12 +99,11 @@ names, creation time, checksum or storage-integrity evidence, proposed and
 prior image digests, health results, restore procedure, and operator. A failed
 or missing rehearsal blocks the runtime change.
 
-A correctly classified **clone-cache** volume does not require backup or a
-copied-volume rehearsal for an image update or development auto-update timer.
-It is a read-only cached clone volume for policy purposes: backup, restore, and
-copied-volume rehearsal are not required. The operator must still retain the
-no-volume-removal rule and verify that the clone can be recreated from origin
-using the configured private/public remote after the update.
+A correctly classified **reproducible clone-cache** volume does not require
+backup or a copied-volume rehearsal for an image update or development
+auto-update timer. It is a read-only cached clone volume for policy purposes:
+backup, restore, and copied-volume rehearsal are not required. The operator
+must still retain the no-volume-removal rule and verify that it can recreate the cache from origin using the configured private/public remote after the update.
 
 For writable deployment volumes, backup, restore, copied-volume creation, and
 deployment switching are deployment-only operator actions. This repository
