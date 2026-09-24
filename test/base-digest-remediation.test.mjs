@@ -131,7 +131,7 @@ function assertScanHasNoPermissionsOverride(workflow) {
 }
 
 function assertNpmDownloadCaches(steps, expectedCount) {
-  const cacheAction = 'actions/cache@caa296126883cff596d87d8935842f9db880ef25';
+  const cacheAction = 'actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9';
   const cacheKey = "npm-downloads-${{ runner.os }}-${{ runner.arch }}-node-26-${{ hashFiles('package-lock.json') }}";
   const restoreKey = 'npm-downloads-${{ runner.os }}-${{ runner.arch }}-node-26-';
   const caches = steps.filter((step) => step.uses === cacheAction && step.with?.path === '~/.npm');
@@ -150,7 +150,7 @@ function assertNpmDownloadCaches(steps, expectedCount) {
 }
 
 function assertTrivyVulnerabilityCache(steps) {
-  const cacheAction = 'actions/cache@caa296126883cff596d87d8935842f9db880ef25';
+  const cacheAction = 'actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9';
   const cachePath = '${{ github.workspace }}/.cache/trivy';
   const cacheKey = 'trivy-${{ runner.os }}-${{ steps.trivy-cache-date.outputs.date }}';
   const restoreKey = 'trivy-${{ runner.os }}-';
