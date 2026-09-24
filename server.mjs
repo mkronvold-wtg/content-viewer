@@ -1693,7 +1693,8 @@ function renderHtml(appState, initialView = {}) {
     }
 
     .tag-button:hover,
-    .tag-button:focus {
+    .tag-button:focus,
+    .tag-button.is-active {
       background: var(--theme-active-bg);
     }
 
@@ -2414,17 +2415,20 @@ function renderHtml(appState, initialView = {}) {
 
     function parseSearchQuery(query) {
       const tagFilters = [];
-      let text = String(query ?? "").replace(/tag:\\s*(?:"([^"]+)"|'([^']+)'|([^\\s]+))/gi, (match, doubleQuoted, singleQuoted, bare) => {
-        const tag = cleanTag(doubleQuoted ?? singleQuoted ?? bare);
-        if (tag) {
-          tagFilters.push(normalizeTag(tag));
+      const layerFilters = [];
+      let text = String(query ?? "").replace(/\\b(tag|layer):\\s*(?:"([^"]+)"|'([^']+)'|([^\\s]+))/gi, (match, facet, doubleQuoted, singleQuoted, bare) => {
+        const value = cleanTag(doubleQuoted ?? singleQuoted ?? bare);
+        if (value && facet.toLowerCase() === "layer") {
+          layerFilters.push(normalizeTag(value));
+        } else if (value) {
+          tagFilters.push(normalizeTag(value));
         }
 
         return " ";
       });
 
-      text = text.replace(/\\btag:\\s*$/i, " ");
-      return { tokens: parseTextTerms(text), tagFilters };
+      text = text.replace(/\\b(?:tag|layer):\\s*$/i, " ");
+      return { tokens: parseTextTerms(text), tagFilters, layerFilters };
     }
 
     function facetFilterToken(item) {
@@ -2539,6 +2543,8 @@ function renderHtml(appState, initialView = {}) {
       const isDocumentScope = tagScope === "document";
       const facetLabel = getFacetLabel();
       const tagItems = isDocumentScope ? getCurrentDocumentFacetValues() : allDocumentFacets[getFacetFieldName()];
+      const parsed = parseSearchQuery(searchInput.value);
+      const activeFilters = new Set(tagFacet === "layer" ? parsed.layerFilters : parsed.tagFilters);
       if (isDocumentScope && !currentDocument) {
         tagCount.textContent = "No document selected";
       } else if (isDocumentScope) {
@@ -2557,9 +2563,11 @@ function renderHtml(appState, initialView = {}) {
       }
 
       for (const tag of tagItems) {
+        const isActive = activeFilters.has(normalizeTag(tag.value || tag.label));
         const button = document.createElement("button");
         button.type = "button";
-        button.className = "tag-button";
+        button.className = "tag-button" + (isActive ? " is-active" : "");
+        button.setAttribute("aria-pressed", String(isActive));
         button.innerHTML =
           '<span class="tag-button-label">' + escapeHtml(tag.label || tag.value) + "</span>" +
           (tag.count ? '<span class="tag-button-count">' + escapeHtml(tag.count) + "</span>" : "");
@@ -2570,12 +2578,24 @@ function renderHtml(appState, initialView = {}) {
 
     function addFacetFilter(item) {
       const normalizedValue = normalizeTag(item.value || item.label);
-      const parsed = parseSearchQuery(searchInput.value);
-      const existingFilters = tagFacet === "layer" ? parsed.layerFilters : parsed.tagFilters;
-      if (!existingFilters.includes(normalizedValue)) {
+      const facetLabel = getFacetLabel();
+      let removed = false;
+      let updatedQuery = String(searchInput.value ?? "").replace(/\\b(tag|layer):\\s*(?:"([^"]+)"|'([^']+)'|([^\\s]+))/gi, (match, facet, doubleQuoted, singleQuoted, bare) => {
+        if (facet.toLowerCase() !== facetLabel) {
+          return match;
+        }
+        const value = cleanTag(doubleQuoted ?? singleQuoted ?? bare);
+        if (normalizeTag(value) !== normalizedValue) {
+          return match;
+        }
+        removed = true;
+        return " ";
+      });
+      if (!removed) {
         const token = facetFilterToken(item);
-        searchInput.value = [searchInput.value.trim(), token].filter(Boolean).join(" ");
+        updatedQuery = [updatedQuery.trim(), token].filter(Boolean).join(" ");
       }
+      searchInput.value = updatedQuery.replace(/\s+/g, " ").trim();
 
       search();
     }
