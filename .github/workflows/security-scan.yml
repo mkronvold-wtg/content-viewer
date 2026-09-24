@@ -96,12 +96,14 @@ jobs:
         uses: github/codeql-action/upload-sarif@9e3211c9a3b9311dfe05da2ed48eea3386f042dd # v4.37.6
         with:
           sarif_file: trivy-source.sarif
+          category: trivy-source
       - name: Upload final-image SARIF when permitted
         if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
         continue-on-error: true
         uses: github/codeql-action/upload-sarif@9e3211c9a3b9311dfe05da2ed48eea3386f042dd # v4.37.6
         with:
           sarif_file: trivy-image.sarif
+          category: trivy-image
       - name: Enforce source and final-image policy
         run: |
           node scripts/enforce-trivy-policy.mjs --scan filesystem --input trivy-source.json --exceptions security/trivy-exceptions.json
