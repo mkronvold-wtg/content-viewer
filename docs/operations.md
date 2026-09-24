@@ -9,7 +9,7 @@ repository was run against a deployment target.
 
 | Source | Verified repository behavior |
 | --- | --- |
-| `Dockerfile` | Uses the official `node:26-alpine3.23` image pinned to an immutable digest for separate dependency and runtime stages. The runtime installs Git and CA certificates, retains only production dependencies and required server/theme assets, creates `/app/content` owned by `node`, runs as `USER node`, and health-checks `GET /api/health`. |
+| `Dockerfile` | Uses the official `node:26-alpine3.23` image pinned to an immutable digest for separate dependency and runtime stages. The runtime installs Git and CA certificates, retains only production dependencies and required server/theme assets, creates `/app/content` owned by `node`, runs as `USER node`, and health-checks `GET /api/health`. Backup/restore requirements apply only when that path is backed by a writable deployment volume; read-only cached clone volumes mounted there remain disposable caches. |
 | `docker-compose.yml` | Local Compose builds the service, tags it `content-viewer:local`, binds `127.0.0.1:8080:8080`, and mounts the logical named volume `content-viewer-content` at `/app/content`. |
 | `docker-compose.npm.yml` | The dockerhost/NPM-proxy target is image-only: it requires `CONTENT_VIEWER_IMAGE`, mounts the same logical volume at `/app/content`, exposes port `8080` only to Compose networks, and joins the external network named `npm-proxy`. It has no host `ports` mapping. |
 | `README.md` | Documents the local build-oriented Compose command and links this runbook for the image-only Dockerhost procedure. |
@@ -66,19 +66,26 @@ has supplied the actual `PROJECT`, `CONTAINER`, `IMAGE`, and `VOLUME` values.
 
 ## Persistent-volume safety contract
 
-`/app/content` is persistent state: it holds the Git content clone used for
-initial clone, `git pull --ff-only`, and indexing. Treat its physical named
-volume as production data.
+`/app/content` holds the Git content clone used for initial clone,
+`git pull --ff-only`, and indexing. Apply the contract that matches the mount:
+
+- **Writable deployment volume:** treat the physical named volume as
+  deployment-managed clone state. Preserve it across restarts and follow the
+  backup/restore and copied-volume rehearsal steps below before a runtime
+  change.
+- **Read-only cached clone volume:** treat the mount as a disposable cache.
+  Because the application rehydrates the clone from the configured remote and branch, host-level backup, restore, and copied-volume rehearsal are not required for that read-only cache. Preserve the remote/branch configuration and recreate the cache from origin when needed.
 
 1. **Never run `docker compose down -v`** for either deployment target. The
    `-v` option removes named volumes and can destroy the content clone.
-2. Confirm that the actual project is `content-viewer` and the mounted volume
-   is `content-viewer_content-viewer-content` using the inspection action in
-   the evidence table. Refuse the cutover if either differs.
-3. Before a runtime change, the dockerhost owner must make a restorable backup
-   of that physical volume with an approved host backup procedure. Record the
-   archive or snapshot identifier, source volume, creation time, checksum or
-   storage integrity evidence, and restore procedure.
+2. For the writable Dockerhost deployment volume, confirm that the actual
+   project is `content-viewer` and the mounted volume is
+   `content-viewer_content-viewer-content` using the inspection action in the
+   evidence table. Refuse the cutover if either differs.
+3. Before a runtime change to that writable deployment volume, the dockerhost
+   owner must make a restorable backup with an approved host backup procedure.
+   Record the archive or snapshot identifier, source volume, creation time,
+   checksum or storage integrity evidence, and restore procedure.
 4. Before promotion, the dockerhost owner must restore that backup into a
    **copied, non-production volume** and perform a forward/rollback rehearsal:
    deploy the proposed runtime against the copy, collect the health response,
@@ -88,10 +95,11 @@ volume as production data.
    proposed and prior image digests, backup/restore evidence, health results,
    and the operator. A failed or missing rehearsal blocks the runtime change.
 
-Backup, restore, copied-volume creation, and deployment switching are
-deployment-only operator actions. This repository supplies no backup image,
-host storage location, Compose override, or verified dockerhost command, so
-it does not prescribe unverified commands for those destructive operations.
+For writable deployment volumes, backup, restore, copied-volume creation, and
+deployment switching are deployment-only operator actions. This repository
+supplies no backup image, host storage location, Compose override, or verified
+dockerhost command, so it does not prescribe unverified commands for those
+destructive operations.
 
 ## Development Dockerhost auto-update (not installed)
 
