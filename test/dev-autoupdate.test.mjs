@@ -304,6 +304,9 @@ test("operator documentation keeps the development channel and volume safety exp
   assert.match(documentation, /loginctl enable-linger <deployment-user>/);
   assert.match(documentation, /content-viewer-autoupdate\.timer/);
   assert.match(documentation, /copied-volume rehearsal/i);
+  assert.match(documentation, /read-only cached clone volumes?/i);
+  assert.match(documentation, /backup, restore, and copied-volume rehearsal are not required/i);
+  assert.match(documentation, /recreate the cache from origin/i);
   assert.match(documentation, /Never run `docker compose down -v`/);
   assert.match(documentation, /not installed/i);
   assert.match(documentation, /content-viewer_content-viewer-content/);
