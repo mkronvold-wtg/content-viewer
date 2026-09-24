@@ -112,7 +112,7 @@ function renderedCsvTable(html, visualRows) {
   };
 }
 
-test("keeps the 90 percent reader contract and intrinsic table layout", async () => {
+test("keeps the 90 percent reader contract while clamping table width", async () => {
   const viewer = await standaloneViewer();
 
   assert.match(viewer, /\.markdown \{\s+width: 90%;\s+max-width: none;\s+margin: 0 auto;/);
@@ -123,15 +123,17 @@ test("keeps the 90 percent reader contract and intrinsic table layout", async ()
   );
   assert.match(
     viewer,
-    /\.markdown \.table-wrapper \{\s+width: max-content;\s+max-width: 100%;\s+border: 1px solid var\(--theme-border\);/,
+    /\.markdown \.table-wrapper \{\s+width: 100%;\s+max-width: 100%;\s+box-sizing: border-box;\s+border: 1px solid var\(--theme-border\);/,
   );
   assert.match(viewer, /\.markdown \.table-actions \{\s+display: flex;\s+justify-content: flex-end;\s+padding: 6px 6px 0;/);
-  assert.match(viewer, /\.markdown \.table-scroll \{\s+width: max-content;\s+max-width: 100%;\s+overflow-x: auto;\s+overflow-y: hidden;/);
+  assert.match(viewer, /\.markdown \.table-scroll \{\s+width: 100%;\s+max-width: 100%;\s+overflow-x: auto;\s+overflow-y: hidden;/);
   assert.match(
     viewer,
-    /\.markdown table \{\s+width: max-content;\s+min-width: 100%;\s+table-layout: auto;/,
+    /\.markdown table \{\s+width: auto;\s+min-width: 100%;\s+table-layout: auto;/,
   );
   assert.doesNotMatch(viewer, /\.markdown \.table-copy-button \{\s+position: absolute;/);
+  assert.doesNotMatch(viewer, /\.markdown \.table-wrapper \{\s+width: max-content;/);
+  assert.doesNotMatch(viewer, /\.markdown table \{\s+width: max-content;/);
   assert.doesNotMatch(viewer, /\.markdown table \{\s+width: 100%;\s+table-layout: fixed;/);
 });
 

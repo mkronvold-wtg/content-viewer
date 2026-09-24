@@ -173,7 +173,8 @@ https://kpe-content.dev.e2open.com/
 The repository's deployment and rollback guardrails are in
 [`docs/operations.md`](docs/operations.md). They distinguish the local Compose
 target from the dockerhost NPM/proxy target, define the required pending
-baseline evidence, and protect the persistent content-clone volume.
+baseline evidence, require backups only for writable deployment content-clone
+volumes, and treat read-only cached clone volumes as disposable caches.
 
 `POST /api/refresh` intentionally remains public at the application layer
 behind the existing trusted proxy/network boundary. Proxy authorization and
