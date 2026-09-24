@@ -129,10 +129,11 @@ test("keeps the 90 percent reader contract while clamping table width", async ()
   assert.match(viewer, /\.markdown \.table-scroll \{\s+width: 100%;\s+max-width: 100%;\s+overflow-x: auto;\s+overflow-y: hidden;/);
   assert.match(
     viewer,
-    /\.markdown table \{\s+width: 100%;\s+max-width: 100%;\s+table-layout: auto;/,
+    /\.markdown table \{\s+width: auto;\s+min-width: 100%;\s+table-layout: auto;/,
   );
   assert.doesNotMatch(viewer, /\.markdown \.table-copy-button \{\s+position: absolute;/);
   assert.doesNotMatch(viewer, /\.markdown \.table-wrapper \{\s+width: max-content;/);
+  assert.doesNotMatch(viewer, /\.markdown table \{\s+width: max-content;/);
   assert.doesNotMatch(viewer, /\.markdown table \{\s+width: 100%;\s+table-layout: fixed;/);
 });
 

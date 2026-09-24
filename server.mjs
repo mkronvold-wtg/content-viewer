@@ -1888,8 +1888,8 @@ function renderHtml(appState, initialView = {}) {
     }
 
     .markdown table {
-      width: 100%;
-      max-width: 100%;
+      width: auto;
+      min-width: 100%;
       table-layout: auto;
       border-collapse: collapse;
       font-size: 13px;
