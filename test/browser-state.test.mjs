@@ -186,6 +186,59 @@ test("persists presentation and search browser state in the web reader", async (
     }
 });
 
+test("shows the release commit link at the bottom of the tag sidebar", async () => {
+    const { releaseInfo } = await import("../server.mjs");
+    const commit = "35f9a3ec7dae24cd42eac47897efad4473646413";
+    assert.deepEqual(releaseInfo({ CONTENT_VIEWER_RELEASE_COMMIT: commit, CONTENT_VIEWER_RELEASE_REPOSITORY: "mkronvold-wtg/content-viewer" }), {
+        commit,
+        shortCommit: "35f9a3e",
+        repository: "mkronvold-wtg/content-viewer",
+        url: `https://github.com/mkronvold-wtg/content-viewer/commit/${commit}`,
+    });
+    for (const env of [
+        {},
+        { CONTENT_VIEWER_RELEASE_COMMIT: "35f9a3e", CONTENT_VIEWER_RELEASE_REPOSITORY: "mkronvold-wtg/content-viewer" },
+        { CONTENT_VIEWER_RELEASE_COMMIT: commit, CONTENT_VIEWER_RELEASE_REPOSITORY: "evil.com/x/y" },
+        { CONTENT_VIEWER_RELEASE_COMMIT: commit, CONTENT_VIEWER_RELEASE_REPOSITORY: "owner/\"><script>" },
+        { CONTENT_VIEWER_RELEASE_COMMIT: commit, CONTENT_VIEWER_RELEASE_REPOSITORY: "owner/.." },
+    ]) {
+        assert.equal(releaseInfo(env), null);
+    }
+
+    const server = await startServerForTest([{
+        slug: "content",
+        label: "content",
+        path: activePath,
+        url: remoteUrl,
+        branch: "main",
+        baseDir: "data",
+        order: 0,
+    }]);
+    const previous = {
+        commit: process.env.CONTENT_VIEWER_RELEASE_COMMIT,
+        repository: process.env.CONTENT_VIEWER_RELEASE_REPOSITORY,
+    };
+    try {
+        delete process.env.CONTENT_VIEWER_RELEASE_COMMIT;
+        delete process.env.CONTENT_VIEWER_RELEASE_REPOSITORY;
+        assert.doesNotMatch(await pageHtml(server, ""), /id="release-info"/);
+
+        process.env.CONTENT_VIEWER_RELEASE_COMMIT = commit;
+        process.env.CONTENT_VIEWER_RELEASE_REPOSITORY = "mkronvold-wtg/content-viewer";
+        const html = await pageHtml(server, "");
+        assert.match(html, new RegExp(`<section id="tag-list"[^>]*></section>\\s*<footer id="release-info" class="release-info">Release <a href="https://github\\.com/mkronvold-wtg/content-viewer/commit/${commit}" target="_blank" rel="noopener noreferrer" title="mkronvold-wtg/content-viewer@${commit}">35f9a3e</a></footer>\\s*</div>\\s*</aside>`));
+    } finally {
+        for (const [key, value] of [["CONTENT_VIEWER_RELEASE_COMMIT", previous.commit], ["CONTENT_VIEWER_RELEASE_REPOSITORY", previous.repository]]) {
+            if (value === undefined) {
+                delete process.env[key];
+            } else {
+                process.env[key] = value;
+            }
+        }
+        await server.close();
+    }
+});
+
 function evaluateNavigationPreviewFunctions(viewer, storedValue = null) {
     const source = ["getStoredFlag", "storeFlag", "setNavResultPreviewMode"]
         .map((name) => viewerFunction(viewer, name))

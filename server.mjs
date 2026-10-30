@@ -110,6 +110,27 @@ function escapeHtml(value) {
         .replaceAll("'", "&#39;");
 }
 
+export function releaseInfo(env = process.env) {
+    const commit = String(env.CONTENT_VIEWER_RELEASE_COMMIT ?? "").trim().toLowerCase();
+    const repository = String(env.CONTENT_VIEWER_RELEASE_REPOSITORY ?? "").trim();
+    if (!/^[0-9a-f]{40}$/.test(commit) || !/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}$/.test(repository) || /\/\.{1,2}$/.test(repository)) {
+        return null;
+    }
+    return {
+        commit,
+        shortCommit: commit.slice(0, 7),
+        repository,
+        url: `https://github.com/${repository}/commit/${commit}`,
+    };
+}
+
+function releaseFooterHtml(release) {
+    if (!release) {
+        return "";
+    }
+    return `<footer id="release-info" class="release-info">Release <a href="${escapeHtml(release.url)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(`${release.repository}@${release.commit}`)}">${escapeHtml(release.shortCommit)}</a></footer>`;
+}
+
 function pathsEqual(left, right) {
     return path.resolve(left).toLowerCase() === path.resolve(right).toLowerCase();
 }
@@ -1648,6 +1669,20 @@ function renderHtml(appState, initialView = {}) {
       line-height: 16px;
     }
 
+    .release-info {
+      flex: 0 0 auto;
+      padding: 8px 10px;
+      border-top: 1px solid var(--theme-border-muted);
+      color: var(--theme-chrome-muted-text);
+      font-size: 12px;
+      line-height: 16px;
+    }
+
+    .release-info a {
+      color: var(--theme-link);
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+
     .tag-scope-toggle {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -2278,6 +2313,7 @@ function renderHtml(appState, initialView = {}) {
           <button class="tag-scope-button is-active" type="button" data-tag-scope="all" aria-pressed="true">All documents</button>
         </div>
         <section id="tag-list" class="tag-list" aria-label="Available tags"></section>
+        ${releaseFooterHtml(releaseInfo())}
       </div>
     </aside>
   </main>

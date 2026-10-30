@@ -190,6 +190,12 @@ rehearsal, while a fully reproducible read-only Git `clone-cache` does not.
 Both classifications require host-local Docker credential-store setup and the
 user-timer procedure in that runbook.
 
+Images published by `.github/workflows/publish-dev-image.yml` receive the
+pushed commit SHA and repository as `CONTENT_VIEWER_RELEASE_COMMIT` and
+`CONTENT_VIEWER_RELEASE_REPOSITORY` build arguments. When both are valid, the
+bottom of the tag sidebar shows the short release commit linked to that commit
+on GitHub. Local and CI-only builds omit the footer.
+
 ## Docker Compose quick start
 
 1. Copy the example environment file:
