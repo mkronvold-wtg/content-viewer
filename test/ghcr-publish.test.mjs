@@ -59,5 +59,9 @@ test('development image publishing is trusted-main-only, pinned, and least privi
   ]);
   assert.match(build.with?.labels, /org\.opencontainers\.image\.source=https:\/\/github\.com\/\$\{\{ github\.repository \}\}/);
   assert.match(build.with?.labels, /org\.opencontainers\.image\.revision=\$\{\{ github\.sha \}\}/);
+  assert.deepEqual(build.with?.['build-args'].trim().split('\n'), [
+    'CONTENT_VIEWER_RELEASE_COMMIT=${{ github.sha }}',
+    'CONTENT_VIEWER_RELEASE_REPOSITORY=${{ github.repository }}',
+  ]);
   assert.doesNotMatch(build.with?.tags, /latest/);
 });
