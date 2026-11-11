@@ -14,7 +14,7 @@ services:
       - content-viewer-content:/app/content
     networks:
       content-viewer-egress:
-      nginxproxy-proxy-net:
+      proxy-net:
         aliases:
           - content-viewer
 
@@ -23,6 +23,9 @@ volumes:
 
 networks:
   content-viewer-egress:
-  nginxproxy-proxy-net:
+  # The external proxy network differs per Dockerhost; set
+  # CONTENT_VIEWER_PROXY_NETWORK in the deployment .env (for example
+  # npm-proxy). The default keeps the existing target.
+  proxy-net:
     external: true
-    name: nginxproxy_proxy-net
+    name: "${CONTENT_VIEWER_PROXY_NETWORK:-nginxproxy_proxy-net}"
