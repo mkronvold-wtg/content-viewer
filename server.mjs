@@ -2109,6 +2109,74 @@ function renderHtml(appState, initialView = {}) {
       margin-bottom: 0;
     }
 
+    .markdown .admonition-note,
+    .markdown .admonition-info,
+    .markdown .admonition-todo,
+    .markdown .admonition-abstract,
+    .markdown .admonition-summary,
+    .markdown .admonition-tldr {
+      border-color: var(--theme-note-border);
+      background: var(--theme-note-bg);
+    }
+
+    .markdown .admonition-tip,
+    .markdown .admonition-hint,
+    .markdown .admonition-success,
+    .markdown .admonition-check,
+    .markdown .admonition-done {
+      border-color: var(--theme-success-border);
+      background: var(--theme-success-bg);
+    }
+
+    .markdown .admonition-warning,
+    .markdown .admonition-caution,
+    .markdown .admonition-attention,
+    .markdown .admonition-question,
+    .markdown .admonition-help,
+    .markdown .admonition-faq {
+      border-color: var(--theme-warning-border);
+      background: var(--theme-warning-bg);
+    }
+
+    .markdown .admonition-danger,
+    .markdown .admonition-error,
+    .markdown .admonition-failure,
+    .markdown .admonition-fail,
+    .markdown .admonition-missing,
+    .markdown .admonition-bug {
+      border-color: var(--theme-error-border);
+      background: var(--theme-error-bg);
+    }
+
+    .markdown .admonition-important,
+    .markdown .admonition-example {
+      border-left-color: var(--theme-accent);
+    }
+
+    .markdown :is(.admonition-note, .admonition-info, .admonition-todo, .admonition-abstract, .admonition-summary, .admonition-tldr) > .admonition-title {
+      color: var(--theme-note-text);
+    }
+
+    .markdown :is(.admonition-tip, .admonition-hint, .admonition-success, .admonition-check, .admonition-done) > .admonition-title {
+      color: var(--theme-success-text);
+    }
+
+    .markdown :is(.admonition-warning, .admonition-caution, .admonition-attention, .admonition-question, .admonition-help, .admonition-faq) > .admonition-title {
+      color: var(--theme-warning-text);
+    }
+
+    .markdown :is(.admonition-danger, .admonition-error, .admonition-failure, .admonition-fail, .admonition-missing, .admonition-bug) > .admonition-title {
+      color: var(--theme-error-text);
+    }
+
+    .markdown :is(.admonition-important, .admonition-example) > .admonition-title {
+      color: var(--theme-accent);
+    }
+
+    .markdown :is(h1, h2, h3, h4, h5, h6)[id] {
+      scroll-margin-top: calc(var(--content-viewer-header-height, 0px) + 12px);
+    }
+
     .markdown a {
       color: var(--theme-link);
     }
@@ -2367,6 +2435,7 @@ function renderHtml(appState, initialView = {}) {
     let wheelPageDelta = 0;
     let lastWheelPageTurn = 0;
     let mermaidModulePromise = null;
+    let headingSlugCounts = new Map();
     const themeStorageKey = "kpe-doc-dashboard-theme";
     const navPinnedStorageKey = "content-viewer-nav-pinned";
     const navPreviewTitleOnlyStorageKey = "content-viewer-nav-title-only";
@@ -3487,12 +3556,56 @@ function renderHtml(appState, initialView = {}) {
       return String(line || "").replace(/^(?: {4}|\\t)/, "");
     }
 
+    function getCallout(line) {
+      const match = String(line || "").trim().match(/^\\[!([A-Za-z][\\w-]*)\\]([-+]?)(?:\\s+(.*))?$/);
+      if (!match) {
+        return null;
+      }
+
+      const marker = match[2] === "-" ? "???" : match[2] === "+" ? "???+" : "!!!";
+      return { marker, type: match[1], title: (match[3] || "").trim() };
+    }
+
+    function headingPlainText(html) {
+      return String(html || "")
+        .replace(/<[^>]*>/g, "")
+        .replaceAll("&lt;", "<")
+        .replaceAll("&gt;", ">")
+        .replaceAll("&quot;", '"')
+        .replaceAll("&#39;", "'")
+        .replaceAll("&amp;", "&");
+    }
+
+    function headingSlug(text) {
+      return String(text || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[^\\p{L}\\p{M}\\p{N}\\p{Pc} -]/gu, "")
+        .replace(/ /g, "-");
+    }
+
+    function uniqueHeadingSlug(slug) {
+      if (!slug) {
+        return "";
+      }
+
+      let result = slug;
+      while (headingSlugCounts.has(result)) {
+        const count = headingSlugCounts.get(slug) + 1;
+        headingSlugCounts.set(slug, count);
+        result = slug + "-" + count;
+      }
+      headingSlugCounts.set(result, 0);
+      return result;
+    }
+
     function renderAdmonition(marker, type, title, contentLines) {
       const normalizedType = String(type || "note").toLowerCase();
       const label = title || normalizedType.replace(/-/g, " ").replace(/^./, (char) => char.toUpperCase());
       const body = '<div class="admonition-content">' + renderMarkdown(contentLines.join("\\n"), currentDocPath) + "</div>";
       if (marker.startsWith("???")) {
-        return '<details class="admonition admonition-' + escapeHtml(normalizedType) + '"><summary class="admonition-title">' + inlineMarkdown(label) + "</summary>" + body + "</details>";
+        const open = marker.endsWith("+") ? " open" : "";
+        return '<details class="admonition admonition-' + escapeHtml(normalizedType) + '"' + open + '><summary class="admonition-title">' + inlineMarkdown(label) + "</summary>" + body + "</details>";
       }
 
       return '<div class="admonition admonition-' + escapeHtml(normalizedType) + '"><p class="admonition-title">' + inlineMarkdown(label) + "</p>" + body + "</div>";
@@ -3576,7 +3689,7 @@ function renderHtml(appState, initialView = {}) {
         const trimmed = line.trim();
         const nextLine = lines[lineIndex + 1] || "";
 
-        const admonition = trimmed.match(/^(!!!|\\?\\?\\?)\\+?\\s+([A-Za-z0-9_-]+)(?:\\s+["'](.+)["'])?\\s*$/);
+        const admonition = trimmed.match(/^((?:!!!|\\?\\?\\?)\\+?)\\s+([A-Za-z0-9_-]+)(?:\\s+["'](.+)["'])?\\s*$/);
         if (admonition) {
           const contentLines = [];
           let cursor = lineIndex + 1;
@@ -3610,6 +3723,11 @@ function renderHtml(appState, initialView = {}) {
           lineIndex = cursor - 1;
           flushParagraph();
           closeList();
+          const callout = getCallout(quoteLines[0]);
+          if (callout) {
+            html.push(renderAdmonition(callout.marker, callout.type, callout.title, quoteLines.slice(1)));
+            continue;
+          }
           html.push("<blockquote>" + renderMarkdown(quoteLines.join("\\n"), docPath) + "</blockquote>");
           continue;
         }
@@ -3703,7 +3821,10 @@ function renderHtml(appState, initialView = {}) {
             continue;
           }
           const level = heading[1].length;
-          html.push("<h" + level + ">" + inlineMarkdown(heading[2]) + "</h" + level + ">");
+          const headingHtml = inlineMarkdown(heading[2]);
+          const headingId = uniqueHeadingSlug(headingSlug(headingPlainText(headingHtml)));
+          const idAttribute = headingId ? ' id="' + escapeHtml(headingId) + '"' : "";
+          html.push("<h" + level + idAttribute + ">" + headingHtml + "</h" + level + ">");
           continue;
         }
 
@@ -3897,6 +4018,7 @@ function renderHtml(appState, initialView = {}) {
       }
       currentPageIndex = Math.min(Math.max(currentPageIndex, 0), currentPages.length - 1);
       docContent.className = "markdown";
+      headingSlugCounts = new Map();
       docContent.innerHTML = format === "csv"
         ? renderCsvTable(currentPages[currentPageIndex].content)
         : renderMarkdown(currentPages[currentPageIndex].content, currentDocument.path);
@@ -4170,6 +4292,15 @@ function renderHtml(appState, initialView = {}) {
     sourceButton.addEventListener("click", copySourceUrl);
     shareButton.addEventListener("click", copyShareLink);
 
+    const pageHeader = document.querySelector("header");
+    function updateHeaderHeight() {
+      document.documentElement.style.setProperty("--content-viewer-header-height", (pageHeader?.offsetHeight || 0) + "px");
+    }
+    if (pageHeader && typeof ResizeObserver === "function") {
+      new ResizeObserver(updateHeaderHeight).observe(pageHeader);
+    }
+    updateHeaderHeight();
+
     async function handleDocumentContentClick(event, container, copyTable, openDocumentHandler) {
       const copyButton = event.target.closest?.("[data-copy-table]");
       if (copyButton && container.contains(copyButton)) {
@@ -4177,7 +4308,6 @@ function renderHtml(appState, initialView = {}) {
         await copyTable(copyButton.closest(".table-wrapper"));
         return;
       }
-
       const link = event.target.closest?.("a[data-doc-link]");
       if (!link) {
         return;

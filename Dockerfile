@@ -7,7 +7,8 @@ RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 
 FROM node:26-alpine3.23@sha256:c3c6e314fd42e41962360b2482fc18d150beb47976c3aa7b8b9689d7ef42a5c2 AS runtime
 
-RUN apk add --no-cache git ca-certificates \
+RUN apk upgrade --no-cache \
+    && apk add --no-cache git ca-certificates \
     && rm -rf /usr/local/lib/node_modules/npm \
     && rm -f /usr/local/bin/npm /usr/local/bin/npx
 
