@@ -871,6 +871,12 @@ async function ensureIndex(state) {
     return state.indexPromise;
 }
 
+function listTreeEntries(index, query) {
+    return searchIndex(index, query, Number.POSITIVE_INFINITY)
+        .map(({ path: docPath, format, title }) => ({ path: docPath, format, title }))
+        .sort((left, right) => left.path.localeCompare(right.path));
+}
+
 function searchIndex(index, query, limit = 50) {
     const { tokens, tagFilters, layerFilters } = parseSearchQuery(query);
 
@@ -1705,11 +1711,121 @@ function renderHtml(appState, initialView = {}) {
       color: var(--theme-active-border);
     }
 
-    .tag-facet-toggle {
+    .tag-facet-toggle,
+    .nav-mode-toggle {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 4px;
       min-width: 132px;
+    }
+
+    .results[hidden],
+    .doc-tree[hidden],
+    .nav-preview-toggle[hidden] {
+      display: none;
+    }
+
+    .doc-tree {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      padding: 6px 0 12px;
+      font-size: 13px;
+      line-height: 18px;
+    }
+
+    .tree-children {
+      margin-left: 13px;
+      padding-left: 6px;
+      border-left: 1px solid var(--theme-border-muted);
+    }
+
+    .tree-folder > summary,
+    .tree-file {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      width: 100%;
+      min-height: 26px;
+      padding: 3px 10px 3px 8px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--theme-chrome-text);
+      cursor: pointer;
+      font: inherit;
+      text-align: left;
+    }
+
+    .tree-folder > summary {
+      list-style: none;
+      font-weight: var(--font-weight-semibold, 600);
+    }
+
+    .tree-folder > summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .tree-folder > summary::before {
+      content: "";
+      flex: 0 0 auto;
+      width: 0;
+      height: 0;
+      border-top: 4px solid transparent;
+      border-bottom: 4px solid transparent;
+      border-left: 5px solid currentColor;
+      opacity: 0.7;
+      transition: transform 120ms ease;
+    }
+
+    .tree-folder[open] > summary::before {
+      transform: rotate(90deg);
+    }
+
+    .tree-file {
+      padding-left: 19px;
+    }
+
+    .tree-folder > summary:hover,
+    .tree-file:hover {
+      background: var(--theme-active-bg);
+      color: var(--theme-text);
+    }
+
+    .tree-file.active {
+      background: var(--theme-surface);
+      color: var(--theme-text);
+      box-shadow: inset 3px 0 0 var(--theme-active-border);
+    }
+
+    .tree-icon {
+      flex: 0 0 auto;
+      width: 14px;
+      height: 14px;
+      color: var(--theme-chrome-muted-text);
+    }
+
+    .tree-folder > summary .tree-icon {
+      color: var(--theme-active-border);
+    }
+
+    .tree-name {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .tree-count {
+      flex: 0 0 auto;
+      color: var(--theme-chrome-muted-text);
+      font-size: 11px;
+      font-weight: normal;
+    }
+
+    .doc-tree .empty {
+      padding: 12px;
     }
 
     .tag-button {
@@ -2328,7 +2444,10 @@ function renderHtml(appState, initialView = {}) {
       </button>
       <div class="nav-rail-inner">
         <div class="nav-rail-header">
-          <h2 class="nav-rail-title">Documents</h2>
+          <div class="nav-mode-toggle" role="group" aria-label="Navigation view">
+            <button class="tag-scope-button is-active" type="button" data-nav-mode="docs" aria-pressed="true">Docs</button>
+            <button class="tag-scope-button" type="button" data-nav-mode="tree" aria-pressed="false">Tree</button>
+          </div>
           <div class="nav-rail-actions">
             <button id="nav-preview-toggle" class="nav-preview-toggle" type="button" aria-label="Show title-only navigation results" aria-pressed="false" title="Show title-only navigation results">
               <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
@@ -2343,6 +2462,7 @@ function renderHtml(appState, initialView = {}) {
           </div>
         </div>
         <section id="results" class="results" aria-label="Search results"></section>
+        <section id="doc-tree" class="doc-tree" aria-label="Document directory tree" hidden></section>
         <button id="nav-resize-handle" class="nav-resize-handle" type="button" aria-label="Resize document navigation sidebar" title="Drag to resize document navigation sidebar"></button>
       </div>
     </aside>
@@ -2401,6 +2521,8 @@ function renderHtml(appState, initialView = {}) {
     const tagFacetButtons = Array.from(document.querySelectorAll("[data-tag-facet]"));
     const tagScopeButtons = Array.from(document.querySelectorAll("[data-tag-scope]"));
     const resultsElement = document.getElementById("results");
+    const docTreeElement = document.getElementById("doc-tree");
+    const navModeButtons = Array.from(document.querySelectorAll("[data-nav-mode]"));
     const statusElement = document.getElementById("status");
     const docTitle = document.getElementById("doc-title");
     const docPath = document.getElementById("doc-path");
@@ -2440,6 +2562,12 @@ function renderHtml(appState, initialView = {}) {
     const navPinnedStorageKey = "content-viewer-nav-pinned";
     const navPreviewTitleOnlyStorageKey = "content-viewer-nav-title-only";
     const navWidthStorageKey = "content-viewer-nav-width";
+    const navModeStorageKey = "content-viewer-nav-mode";
+    let navMode = "docs";
+    let treeEntries = [];
+    let treeRequestId = 0;
+    let treeRenderedActivePath = "";
+    const treeExpandedFolders = new Set();
     const tagPinnedStorageKey = "content-viewer-tag-pinned";
     const searchSessionStorageKey = "content-viewer-search";
     const themeIds = ${JSON.stringify(themeConfig.themeIds)};
@@ -2863,6 +2991,121 @@ function renderHtml(appState, initialView = {}) {
       }
       tagRail.classList.toggle("is-open", isOpen);
       tagFlyoutTrigger.setAttribute("aria-expanded", String(isOpen || tagRail.classList.contains("is-pinned")));
+    }
+
+    function buildDocumentTree(entries) {
+      const root = { name: "", path: "", folders: new Map(), files: [], count: 0 };
+      for (const entry of Array.isArray(entries) ? entries : []) {
+        const parts = String(entry?.path || "").split("/").filter(Boolean);
+        if (!parts.length) {
+          continue;
+        }
+        let node = root;
+        node.count += 1;
+        for (const part of parts.slice(0, -1)) {
+          if (!node.folders.has(part)) {
+            node.folders.set(part, { name: part, path: node.path ? node.path + "/" + part : part, folders: new Map(), files: [], count: 0 });
+          }
+          node = node.folders.get(part);
+          node.count += 1;
+        }
+        node.files.push({ name: parts[parts.length - 1], path: entry.path, title: entry.title || "", format: entry.format || "" });
+      }
+      return root;
+    }
+
+    function treeAncestorFolders(docPath) {
+      const parts = String(docPath || "").split("/").filter(Boolean).slice(0, -1);
+      return parts.map((part, index) => parts.slice(0, index + 1).join("/"));
+    }
+
+    function documentTreeHtml(node, treeOptions) {
+      const options = treeOptions || {};
+      const folderIcon = '<svg class="tree-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M1.5 3.5h4.3l1.4 1.5h7.3v7.5h-13v-9Z" fill="currentColor" opacity="0.85"></path></svg>';
+      const fileIcon = '<svg class="tree-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M3.5 1.5h6l3 3v10h-9v-13Zm5.5 1v3h3" fill="none" stroke="currentColor" stroke-width="1.1"></path></svg>';
+      const isOpen = (folderPath) => options.expandAll || (options.expanded && options.expanded.has(folderPath));
+      const folders = Array.from(node.folders.values()).sort((left, right) => left.name.localeCompare(right.name));
+      const files = node.files.slice().sort((left, right) => left.name.localeCompare(right.name));
+      return (
+        folders
+          .map((folder) =>
+            '<details class="tree-folder" data-tree-folder="' + escapeHtml(folder.path) + '"' + (isOpen(folder.path) ? " open" : "") + ">" +
+            "<summary>" + folderIcon + '<span class="tree-name">' + escapeHtml(folder.name) + '</span><span class="tree-count">' + folder.count + "</span></summary>" +
+            '<div class="tree-children">' + documentTreeHtml(folder, options) + "</div></details>"
+          )
+          .join("") +
+        files
+          .map((file) =>
+            '<button type="button" class="tree-file' + (file.path === options.activePath ? " active" : "") + '" data-tree-path="' + escapeHtml(file.path) + '" title="' + escapeHtml(file.title ? file.title + " — " + file.path : file.path) + '">' +
+            fileIcon + '<span class="tree-name">' + escapeHtml(file.name) + "</span></button>"
+          )
+          .join("")
+      );
+    }
+
+    function renderDocumentTree() {
+      if (!treeEntries.length) {
+        docTreeElement.innerHTML = '<div class="empty">No matching documents.</div>';
+        return;
+      }
+      for (const folderPath of treeAncestorFolders(activePath)) {
+        treeExpandedFolders.add(folderPath);
+      }
+      const scrollTop = docTreeElement.scrollTop;
+      docTreeElement.innerHTML = documentTreeHtml(buildDocumentTree(treeEntries), {
+        activePath,
+        expanded: treeExpandedFolders,
+        expandAll: Boolean(searchInput.value.trim()),
+      });
+      docTreeElement.scrollTop = scrollTop;
+      if (activePath && activePath !== treeRenderedActivePath) {
+        docTreeElement.querySelector(".tree-file.active")?.scrollIntoView({ block: "nearest" });
+      }
+      treeRenderedActivePath = activePath;
+    }
+
+    async function loadDocumentTree() {
+      const requestId = ++treeRequestId;
+      try {
+        const data = await requestJson(apiUrl("/api/tree", { q: searchInput.value.trim() }));
+        if (requestId !== treeRequestId) {
+          return;
+        }
+        treeEntries = Array.isArray(data.entries) ? data.entries : [];
+        renderDocumentTree();
+      } catch (error) {
+        if (requestId === treeRequestId) {
+          docTreeElement.innerHTML = '<div class="empty">Could not load the document tree: ' + escapeHtml(error.message) + "</div>";
+        }
+      }
+    }
+
+    function setNavMode(mode, options = {}) {
+      navMode = mode === "tree" ? "tree" : "docs";
+      for (const button of navModeButtons) {
+        const isActive = button.dataset.navMode === navMode;
+        button.classList.toggle("is-active", isActive);
+        button.setAttribute("aria-pressed", String(isActive));
+      }
+      const isTree = navMode === "tree";
+      resultsElement.hidden = isTree;
+      docTreeElement.hidden = !isTree;
+      navPreviewToggle.hidden = isTree;
+      try {
+        localStorage.setItem(navModeStorageKey, navMode);
+      } catch {
+      }
+      if (isTree && options.load !== false) {
+        loadDocumentTree();
+      }
+    }
+
+    function getStoredNavMode() {
+      try {
+        return localStorage.getItem(navModeStorageKey) === "tree" ? "tree" : "docs";
+      } catch {
+        return "docs";
+      }
     }
 
     function setNavResultPreviewMode(isTitleOnly) {
@@ -4050,6 +4293,9 @@ function renderHtml(appState, initialView = {}) {
           tags: Array.isArray(data.facets?.tags) ? data.facets.tags : (Array.isArray(data.tags) ? data.tags : []),
         };
         renderActiveTagList();
+        if (navMode === "tree") {
+          loadDocumentTree();
+        }
 
         if (!data.results.length) {
           resultsElement.innerHTML = '<div class="empty" style="padding:12px;">No matching documents.</div>';
@@ -4241,6 +4487,26 @@ function renderHtml(appState, initialView = {}) {
     navPin.addEventListener("click", () => {
       setNavPinned(!navRail.classList.contains("is-pinned"));
     });
+    navModeButtons.forEach((button) => {
+      button.addEventListener("click", () => setNavMode(button.dataset.navMode));
+    });
+    docTreeElement.addEventListener("click", (event) => {
+      const fileButton = event.target.closest("[data-tree-path]");
+      if (fileButton) {
+        openDocument(fileButton.dataset.treePath);
+      }
+    });
+    docTreeElement.addEventListener("toggle", (event) => {
+      const folder = event.target.closest?.("[data-tree-folder]");
+      if (!folder || searchInput.value.trim()) {
+        return;
+      }
+      if (folder.open) {
+        treeExpandedFolders.add(folder.dataset.treeFolder);
+      } else {
+        treeExpandedFolders.delete(folder.dataset.treeFolder);
+      }
+    }, true);
     navResizeHandle.addEventListener("pointerdown", startNavResize);
 
     tagRail.addEventListener("mouseenter", () => setTagRailOpen(true));
@@ -4282,6 +4548,8 @@ function renderHtml(appState, initialView = {}) {
 
     repoSelect.addEventListener("change", async () => {
       activeRepo = repoSelect.value;
+      treeExpandedFolders.clear();
+      treeEntries = [];
       resetDocumentView();
       if (window.history?.pushState) {
         window.history.pushState({ repo: activeRepo, path: "" }, "", repoPathPrefix(activeRepo));
@@ -4395,6 +4663,7 @@ function renderHtml(appState, initialView = {}) {
       populateThemeSelect();
       applyNavWidth(getStoredNavWidth());
       setNavResultPreviewMode(getStoredFlag(navPreviewTitleOnlyStorageKey, false));
+      setNavMode(getStoredNavMode(), { load: false });
       setNavPinned(getStoredFlag(navPinnedStorageKey, true));
       setTagPinned(getStoredFlag(tagPinnedStorageKey, false));
       applyTheme(getInitialTheme());
@@ -4522,6 +4791,22 @@ async function handleRequest(appState, req, res) {
                 layers: index.facets.layers,
                 tags: index.facets.tags,
                 results,
+            });
+            return;
+        }
+
+        if (req.method === "GET" && url.pathname === "/api/tree") {
+            const state = requireRepoState(appState, url.searchParams.get("repo"));
+            const index = await ensureIndex(state);
+            const query = url.searchParams.get("q") ?? "";
+            const entries = listTreeEntries(index, query);
+            sendJson(res, 200, {
+                query,
+                count: entries.length,
+                total: index.docs.length,
+                indexedAt: index.indexedAt,
+                repo: index.repo,
+                entries,
             });
             return;
         }

@@ -21,6 +21,7 @@ This repository includes:
 - Presentation mode with heading or `---` pagination; direct document URLs with `?present=1` reopen in presentation mode.
 - Per-tab search text restoration that reruns the normal search pipeline after a browser reload.
 - Pin/unpin document navigation and tag sidebars with browser-stored flyout behavior and adjustable document navigation width.
+- Switch the document navigation sidebar between **Docs** (ranked search results) and **Tree** (a collapsible folder/file directory tree of every matching document); the chosen view is remembered per browser.
 - Shared canonical `mkronvold/themes` theme pack loaded from vendored theme metadata and selected from a theme pulldown.
 - Multiple independent content repos addressed by URL prefix, for example `/kpe.content`.
 - Optional per-repo base directories that enforce each repository's document index root while keeping that prefix out of document display and browser URLs.

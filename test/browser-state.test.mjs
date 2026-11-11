@@ -426,3 +426,68 @@ test("persists the navigation result preview display mode in the web reader", as
     assert.equal(restored.values.get("content-viewer-nav-title-only"), "0");
     assert.doesNotMatch(viewerFunction(viewer, "setNavResultPreviewMode"), /search\(|activePath|setNavPinned|applyNavWidth/);
 });
+test("switches the navigation sidebar between Docs and a directory Tree", async () => {
+    const serverPath = fileURLToPath(new URL("../server.mjs", import.meta.url));
+    const serverSource = await fs.readFile(serverPath, "utf8");
+    const viewer = viewerSource(serverSource);
+
+    assert.match(viewer, /<div class="nav-mode-toggle" role="group" aria-label="Navigation view">\s*<button class="tag-scope-button is-active" type="button" data-nav-mode="docs" aria-pressed="true">Docs<\/button>\s*<button class="tag-scope-button" type="button" data-nav-mode="tree" aria-pressed="false">Tree<\/button>/);
+    assert.match(viewer, /<section id="doc-tree" class="doc-tree" aria-label="Document directory tree" hidden><\/section>/);
+    assert.match(viewer, /const navModeStorageKey = "content-viewer-nav-mode"/);
+    assert.match(viewer, /setNavMode\(getStoredNavMode\(\), \{ load: false \}\)/);
+
+    const source = ["escapeHtml", "buildDocumentTree", "treeAncestorFolders", "documentTreeHtml"]
+        .map((name) => viewerFunction(viewer, name))
+        .join("\n");
+    const { buildDocumentTree, treeAncestorFolders, documentTreeHtml } = Function(`${source}\nreturn { buildDocumentTree, treeAncestorFolders, documentTreeHtml };`)();
+
+    const tree = buildDocumentTree([
+        { path: "Users/alice/Notes.md", title: "Notes", format: "markdown" },
+        { path: "Users/alice/<b>.md", title: "Odd", format: "markdown" },
+        { path: "Users/bob/report.csv", title: "Report", format: "csv" },
+        { path: "README.md", title: "Readme", format: "markdown" },
+    ]);
+    assert.equal(tree.count, 4);
+    assert.deepEqual(Array.from(tree.folders.keys()), ["Users"]);
+    assert.equal(tree.folders.get("Users").count, 3);
+    assert.equal(tree.folders.get("Users").folders.get("alice").path, "Users/alice");
+    assert.deepEqual(tree.files.map((file) => file.name), ["README.md"]);
+    assert.deepEqual(treeAncestorFolders("Users/alice/Notes.md"), ["Users", "Users/alice"]);
+    assert.deepEqual(treeAncestorFolders("README.md"), []);
+
+    const html = documentTreeHtml(tree, { activePath: "Users/alice/Notes.md", expanded: new Set(["Users", "Users/alice"]) });
+    assert.match(html, /^<details class="tree-folder" data-tree-folder="Users" open>/, "folders come before root files");
+    assert.match(html, /<details class="tree-folder" data-tree-folder="Users\/alice" open>/);
+    assert.match(html, /<details class="tree-folder" data-tree-folder="Users\/bob">/, "collapsed folders stay closed");
+    assert.match(html, /<button type="button" class="tree-file active" data-tree-path="Users\/alice\/Notes.md" title="Notes — Users\/alice\/Notes.md">/);
+    assert.match(html, /<span class="tree-name">&lt;b&gt;.md<\/span>/, "file names are escaped");
+    assert.ok(html.indexOf("&lt;b&gt;.md") < html.indexOf("Notes.md"), "files sort by name");
+    assert.match(documentTreeHtml(tree, { expandAll: true }), /data-tree-folder="Users\/bob" open>/);
+
+    await fs.mkdir(path.join(seedPath, "data", "nested", "deeper"), { recursive: true });
+    await fs.writeFile(path.join(seedPath, "data", "nested", "deeper", "child.md"), "# Child\n\nTree content\n");
+    await git(["add", "data/nested"], seedPath);
+    await git(["-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-m", "Add nested doc"], seedPath);
+    await git(["push", "origin", "main"], seedPath);
+    await fs.rm(activePath, { recursive: true, force: true });
+
+    const server = await startServerForTest([{
+        slug: "content",
+        label: "content",
+        path: activePath,
+        url: remoteUrl,
+        branch: "main",
+        baseDir: "data",
+        order: 0,
+    }]);
+    try {
+        const all = await (await fetch(`${server.url}/api/tree?repo=content`)).json();
+        assert.deepEqual(all.entries.map((entry) => entry.path), ["guide.md", "nested/deeper/child.md"]);
+        assert.deepEqual(all.entries[1], { path: "nested/deeper/child.md", format: "markdown", title: "Child" });
+        assert.equal(all.total, 2);
+        const filtered = await (await fetch(`${server.url}/api/tree?repo=content&q=tree`)).json();
+        assert.deepEqual(filtered.entries.map((entry) => entry.path), ["nested/deeper/child.md"]);
+    } finally {
+        await server.close();
+    }
+});
