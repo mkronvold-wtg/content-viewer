@@ -1271,9 +1271,10 @@ function renderHtml(appState, initialView = {}) {
       --nav-column: var(--nav-rail-width);
       --tag-column: var(--rail-collapsed-size);
       grid-template-columns: var(--nav-column) minmax(0, 1fr) var(--tag-column);
-      height: calc(100vh - 97px);
+      height: calc(100vh - var(--content-viewer-header-height, 97px));
       min-height: 0;
       position: relative;
+      overflow-x: clip;
     }
 
     body.nav-unpinned main {
@@ -4562,7 +4563,7 @@ function renderHtml(appState, initialView = {}) {
 
     const pageHeader = document.querySelector("header");
     function updateHeaderHeight() {
-      document.documentElement.style.setProperty("--content-viewer-header-height", (pageHeader?.offsetHeight || 0) + "px");
+      document.documentElement.style.setProperty("--content-viewer-header-height", (pageHeader ? pageHeader.getBoundingClientRect().height : 0) + "px");
     }
     if (pageHeader && typeof ResizeObserver === "function") {
       new ResizeObserver(updateHeaderHeight).observe(pageHeader);

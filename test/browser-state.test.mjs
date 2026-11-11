@@ -491,3 +491,13 @@ test("switches the navigation sidebar between Docs and a directory Tree", async 
         await server.close();
     }
 });
+
+test("sizes the main layout from the measured header height", async () => {
+    const serverPath = fileURLToPath(new URL("../server.mjs", import.meta.url));
+    const viewer = viewerSource(await fs.readFile(serverPath, "utf8"));
+
+    assert.match(viewer, /main \{[^}]*height: calc\(100vh - var\(--content-viewer-header-height, 97px\)\);/);
+    assert.match(viewer, /main \{[^}]*overflow-x: clip;/, "the hidden flyout offset must not add a horizontal scrollbar");
+    assert.doesNotMatch(viewer, /height: calc\(100vh - 97px\)/, "a hard-coded header height lets the rails overlap a taller header");
+    assert.match(viewer, /setProperty\("--content-viewer-header-height", \(pageHeader \? pageHeader\.getBoundingClientRect\(\)\.height : 0\) \+ "px"\)/);
+});
