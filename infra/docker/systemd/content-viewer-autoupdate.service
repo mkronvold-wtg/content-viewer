@@ -1,0 +1,15 @@
+[Unit]
+Description=Content Viewer allowlisted development-image auto-update
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+SuccessExitStatus=10
+TimeoutStopSec=2min
+WorkingDirectory=%h/src/content-viewer
+Environment=HOME=%h
+# The deployment user manager must already include the Docker socket group.
+ExecStart=%h/src/content-viewer/infra/docker/autoupdate.sh --config %h/.config/content-viewer/autoupdate.conf --once
+PrivateTmp=true
+UMask=0077

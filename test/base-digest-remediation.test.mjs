@@ -24,9 +24,9 @@ const currentConfigDigest = digest('e');
 const candidateConfigDigest = digest('f');
 const scannedBaseSha = '1'.repeat(40);
 const dockerfile = [
-  `FROM node:26-bookworm-slim@${currentDigest} AS dependencies`,
+  `FROM node:26-alpine3.23@${currentDigest} AS dependencies`,
   'RUN true',
-  `FROM node:26-bookworm-slim@${currentDigest} AS runtime`,
+  `FROM node:26-alpine3.23@${currentDigest} AS runtime`,
 ].join('\n');
 
 function index(descriptorDigest) {
@@ -74,7 +74,7 @@ function registryFetch({ tagDigest = candidateDigest } = {}) {
     if (reference === currentDigest) {
       return response(index(currentPlatformDigest), currentDigest, 'application/vnd.oci.image.index.v1+json');
     }
-    if (reference === '26-bookworm-slim') {
+    if (reference === '26-alpine3.23') {
       return response(index(tagDigest === currentDigest ? currentPlatformDigest : candidatePlatformDigest), tagDigest, 'application/vnd.oci.image.index.v1+json');
     }
     if (reference === currentPlatformDigest) {
@@ -130,6 +130,40 @@ function assertScanHasNoPermissionsOverride(workflow) {
   return scan;
 }
 
+function assertNpmDownloadCaches(steps, expectedCount) {
+  const cacheAction = 'actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9';
+  const cacheKey = "npm-downloads-${{ runner.os }}-${{ runner.arch }}-node-26-${{ hashFiles('package-lock.json') }}";
+  const restoreKey = 'npm-downloads-${{ runner.os }}-${{ runner.arch }}-node-26-';
+  const caches = steps.filter((step) => step.uses === cacheAction && step.with?.path === '~/.npm');
+  const setupNodeSteps = steps.filter((step) => step.uses?.startsWith('actions/setup-node@'));
+
+  assert.equal(caches.length, expectedCount, 'Every setup-node step must use a direct npm download cache');
+  assert.equal(setupNodeSteps.length, expectedCount, 'Each direct npm download cache must have a setup-node step');
+  assert.equal(setupNodeSteps.every((step) => Object.hasOwn(step.with ?? {}, 'cache') === false), true);
+  for (const cache of caches) {
+    const cacheIndex = steps.indexOf(cache);
+    assert.equal(steps[cacheIndex - 1]?.uses?.startsWith('actions/setup-node@'), true);
+    assert.equal(cache.with?.path, '~/.npm');
+    assert.equal(cache.with?.key, cacheKey);
+    assert.equal(cache.with?.['restore-keys']?.trim(), restoreKey);
+  }
+}
+
+function assertTrivyVulnerabilityCache(steps) {
+  const cacheAction = 'actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9';
+  const cachePath = '${{ github.workspace }}/.cache/trivy';
+  const cacheKey = 'trivy-${{ runner.os }}-${{ steps.trivy-cache-date.outputs.date }}';
+  const restoreKey = 'trivy-${{ runner.os }}-';
+  const caches = steps.filter((step) => step.uses === cacheAction && step.with?.path === cachePath);
+  const dateStep = steps.find((step) => step.id === 'trivy-cache-date');
+
+  assert.equal(caches.length, 1, 'Trivy must use one direct vulnerability database cache');
+  assert.match(dateStep?.run ?? '', /date -u \+'%Y-%m-%d'/);
+  assert.equal(caches[0].with?.key, cacheKey);
+  assert.equal(caches[0].with?.['restore-keys']?.trim(), restoreKey);
+  assert.ok(steps.indexOf(caches[0]) < steps.findIndex((step) => step.uses?.startsWith('aquasecurity/trivy-action@')));
+}
+
 test('validation workflow runs the complete Node suite before one separate image smoke test', async () => {
   const root = resolve(import.meta.dirname, '..');
   const [workflowSource, packageSource] = await Promise.all([
@@ -147,8 +181,11 @@ test('validation workflow runs the complete Node suite before one separate image
     'npm run test:base-directory-root',
     'npm run test:csv',
     'npm run test:markdown',
+    'npm run test:table-controls',
     'npm run test:security-exceptions',
     'npm run test:base-digest-remediation',
+    'npm run test:ghcr-publish',
+    'npm run test:dev-autoupdate',
   ]);
   assert.equal(deterministicSuite.includes('npm run test:container'), false);
   assert.ok(Array.isArray(steps), 'Validation workflow must define validate job steps');
@@ -161,11 +198,12 @@ test('validation workflow runs the complete Node suite before one separate image
   const containerSmokeIndex = steps.indexOf(containerSmokeSteps[0]);
   assert.equal(containerSmokeSteps[0].name, 'Smoke-test final image');
   assert.ok(containerSmokeIndex > deterministicStepIndex, 'Container smoke must run after deterministic tests');
+  assertNpmDownloadCaches(steps, 1);
 });
 
 test('parses the actual pinned runtime tag and changes only its digest', () => {
   const parsed = parsePinnedNodeDockerfile(dockerfile);
-  assert.equal(parsed.tag, '26-bookworm-slim');
+  assert.equal(parsed.tag, '26-alpine3.23');
   assert.equal(parsed.digest, currentDigest);
   assert.equal(parsed.references.length, 2);
   const candidate = replacePinnedNodeDigest(dockerfile, currentDigest, candidateDigest);
@@ -175,7 +213,7 @@ test('parses the actual pinned runtime tag and changes only its digest', () => {
 
 test('rejects malformed Dockerfile and unapproved platform input', () => {
   assert.throws(
-    () => parsePinnedNodeDockerfile('FROM node:26-bookworm-slim AS runtime'),
+    () => parsePinnedNodeDockerfile('FROM node:26-alpine3.23 AS runtime'),
     /exact tag@sha256 digest/,
   );
   assert.throws(() => validateDeploymentPlatform('linux/arm64'), /explicit allowlisted value/);
@@ -234,11 +272,11 @@ test('PR evidence requires the scanned base and exact Dockerfile digest substitu
     source: {
       registry: 'registry-1.docker.io',
       repository: 'library/node',
-      tag: '26-bookworm-slim',
-      endpoint: 'https://registry-1.docker.io/v2/library/node/manifests/26-bookworm-slim',
+      tag: '26-alpine3.23',
+      endpoint: 'https://registry-1.docker.io/v2/library/node/manifests/26-alpine3.23',
     },
     platform: 'linux/amd64',
-    tag: '26-bookworm-slim',
+    tag: '26-alpine3.23',
     current: {
       digest: currentDigest,
       platformManifestDigest: currentPlatformDigest,
@@ -275,7 +313,7 @@ test('PR evidence requires the scanned base and exact Dockerfile digest substitu
       sha: scannedBaseSha,
     },
     labels: [{ name: 'base-digest-remediation' }],
-    title: 'chore: remediate node:26-bookworm-slim base digest',
+    title: 'chore: remediate node:26-alpine3.23 base digest',
     body: [
       currentDigest,
       candidateDigest,
@@ -371,6 +409,46 @@ test('remediation workflow accepts only scheduled trusted execution and never en
   const actions = jobSteps.filter((step) => step.uses);
   assert.ok(actions.length > 0);
   assert.equal(actions.every((step) => /^[^@\s]+@[a-f0-9]{40}$/.test(step.uses)), true);
+  assertNpmDownloadCaches(jobSteps, 3);
+});
+
+test('Trivy workflows pin the verified installer and require every scan to succeed', async () => {
+  const root = resolve(import.meta.dirname, '..');
+  const [securitySource, remediationSource] = await Promise.all([
+    readFile(resolve(root, '.github/workflows/security-scan.yml'), 'utf8'),
+    readFile(resolve(root, '.github/workflows/base-digest-remediation.yml'), 'utf8'),
+  ]);
+  const workflows = [
+    ['security', parseWorkflow(securitySource), 2],
+    ['remediation', parseWorkflow(remediationSource), 2],
+  ];
+  const trivyAction = 'aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25';
+
+  for (const [name, workflow, expectedScans] of workflows) {
+    const scans = Object.values(workflow.jobs).flatMap((job) => job.steps ?? [])
+      .filter((step) => step.uses === trivyAction);
+    assert.equal(scans.length, expectedScans, `${name} workflow must retain every Trivy scan`);
+    for (const scan of scans) {
+      assert.equal(scan.with?.version, 'v0.73.0');
+      assert.equal(scan['continue-on-error'] ?? false, false, 'Trivy installation and scanning must fail the job');
+      assert.equal(scan.with?.scanners, 'vuln');
+      assert.equal(scan.with?.['ignore-unfixed'], 'false');
+      assert.equal(scan.with?.cache, 'false', 'Trivy must not invoke its embedded cache action');
+    }
+  }
+
+  const securitySteps = workflows[0][1].jobs.trivy.steps;
+  const remediationSteps = workflows[1][1].jobs.scan.steps;
+  const securityScans = securitySteps.filter((step) => step.uses === trivyAction);
+  assert.deepEqual(
+    securityScans.map((step) => [step.with?.['scan-type'], step.with?.['scan-ref'] ?? step.with?.['image-ref']]),
+    [
+      ['fs', '.'],
+      ['image', 'content-viewer:security-${{ github.sha }}'],
+    ],
+  );
+  assertTrivyVulnerabilityCache(securitySteps);
+  assertTrivyVulnerabilityCache(remediationSteps);
 });
 
 test('rejects quoted and escaped scan permissions overrides without confusing quoted values', () => {

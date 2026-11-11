@@ -1,0 +1,8 @@
+# Dockerhost deployment artifacts execute on Linux and must retain Unix line endings.
+*.sh text eol=lf
+*.service text eol=lf
+*.timer text eol=lf
+*.conf.example text eol=lf
+
+# The canonical updater is a byte-for-byte vendor copy; preserve upstream bytes.
+templates/compose-autoupdate/** -text !eol

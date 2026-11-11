@@ -110,6 +110,27 @@ function escapeHtml(value) {
         .replaceAll("'", "&#39;");
 }
 
+export function releaseInfo(env = process.env) {
+    const commit = String(env.CONTENT_VIEWER_RELEASE_COMMIT ?? "").trim().toLowerCase();
+    const repository = String(env.CONTENT_VIEWER_RELEASE_REPOSITORY ?? "").trim();
+    if (!/^[0-9a-f]{40}$/.test(commit) || !/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}$/.test(repository) || /\/\.{1,2}$/.test(repository)) {
+        return null;
+    }
+    return {
+        commit,
+        shortCommit: commit.slice(0, 7),
+        repository,
+        url: `https://github.com/${repository}/commit/${commit}`,
+    };
+}
+
+function releaseFooterHtml(release) {
+    if (!release) {
+        return "";
+    }
+    return `<footer id="release-info" class="release-info">Release <a href="${escapeHtml(release.url)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(`${release.repository}@${release.commit}`)}">${escapeHtml(release.shortCommit)}</a></footer>`;
+}
+
 function pathsEqual(left, right) {
     return path.resolve(left).toLowerCase() === path.resolve(right).toLowerCase();
 }
@@ -297,6 +318,53 @@ function parseRepoConfigs() {
     return repos;
 }
 
+function isManagedClonePath(repo) {
+    return pathsEqual(repo.path, path.join(DEFAULT_CONTENT_ROOT, repo.slug));
+}
+
+async function cleanupStaleManagedClones(repos) {
+    if (!repos.some(isManagedClonePath)) {
+        return;
+    }
+
+    let entries;
+    try {
+        entries = await fs.readdir(DEFAULT_CONTENT_ROOT, { withFileTypes: true });
+    } catch (error) {
+        if (error?.code === "ENOENT") {
+            return;
+        }
+        throw error;
+    }
+
+    const activePaths = repos.filter(isManagedClonePath).map((repo) => path.resolve(repo.path));
+    await Promise.all(entries.map(async (entry) => {
+        if (!entry.isDirectory() || sanitizeRepoSlug(entry.name) !== entry.name) {
+            return;
+        }
+
+        const candidatePath = path.resolve(DEFAULT_CONTENT_ROOT, entry.name);
+        if (
+            !isWithinDirectory(DEFAULT_CONTENT_ROOT, candidatePath) ||
+            activePaths.some((activePath) => pathsEqual(activePath, candidatePath)) ||
+            (PRIMARY_REPO_PATH && pathsEqual(PRIMARY_REPO_PATH, candidatePath))
+        ) {
+            return;
+        }
+
+        try {
+            const stat = await fs.stat(path.join(candidatePath, ".git"));
+            if (!stat.isDirectory()) {
+                return;
+            }
+        } catch {
+            return;
+        }
+
+        await fs.rm(candidatePath, { recursive: true, force: true });
+    }));
+}
+
 const CONFIGURED_REPOS = parseRepoConfigs();
 const DEFAULT_REPO_SLUG = CONFIGURED_REPOS[0].slug;
 
@@ -390,29 +458,34 @@ async function updateDisposableClone(repoState) {
 
 
 function extractFrontmatter(content) {
-    if (!content.startsWith("---\n") && !content.startsWith("---\r\n")) {
+    const frontmatter = extractFrontmatterBlock(content);
+    if (!frontmatter) {
         return {};
     }
-
-    const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/);
-    if (!match) {
-        return {};
-    }
-
-    const frontmatter = match[1];
     const titleMatch = frontmatter.match(/^title:\s*(.+)$/im);
     const tags = extractFrontmatterList(frontmatter, ["tags", "tag", "labels", "label"]);
     const layers = extractFrontmatterList(frontmatter, ["layers", "layer"]);
+    const fields = extractFrontmatterFields(frontmatter);
 
     return {
         title: titleMatch ? titleMatch[1].trim().replace(/^["']|["']$/g, "") : undefined,
         layers,
         tags,
+        fields,
     };
 }
 
 function stripFrontmatter(content) {
     return String(content ?? "").replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "");
+}
+
+function extractFrontmatterBlock(content) {
+    if (!content.startsWith("---\n") && !content.startsWith("---\r\n")) {
+        return "";
+    }
+
+    const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/);
+    return match ? match[1] : "";
 }
 
 function extractFrontmatterList(frontmatter, keys) {
@@ -435,6 +508,8 @@ function extractFrontmatterList(frontmatter, keys) {
             const listMatch = inlineValue.match(/^\[(.*)\]$/);
             if (listMatch) {
                 values.push(...listMatch[1].split(",").map(cleanTag).filter(Boolean));
+            } else if (inlineValue.includes(",")) {
+                values.push(...inlineValue.split(",").map(cleanTag).filter(Boolean));
             } else {
                 values.push(cleanTag(inlineValue));
             }
@@ -450,6 +525,128 @@ function extractFrontmatterList(frontmatter, keys) {
         seen.add(normalized);
         return true;
     });
+}
+
+function extractFrontmatterFields(frontmatter) {
+    const fields = [];
+    const reservedKeys = new Set(["title", "tags", "tag", "labels", "label", "layers", "layer"]);
+    for (const entry of parseFrontmatterEntries(frontmatter)) {
+        if (reservedKeys.has(entry.key.toLowerCase())) {
+            continue;
+        }
+
+        const value = normalizeFrontmatterFieldValue(entry.value);
+        if (value === "" || (Array.isArray(value) && !value.length)) {
+            continue;
+        }
+
+        fields.push({
+            key: entry.key,
+            label: formatFrontmatterFieldLabel(entry.key),
+            value,
+        });
+    }
+    return fields;
+}
+
+function parseFrontmatterEntries(frontmatter) {
+    const entries = [];
+    const lines = String(frontmatter ?? "").split(/\r?\n/);
+    for (let index = 0; index < lines.length; index += 1) {
+        const line = lines[index];
+        if (!line || /^\s/.test(line) || /^\s*#/.test(line)) {
+            continue;
+        }
+
+        const match = line.match(/^([^:#][^:]*?):[ \t]*(.*)$/);
+        if (!match) {
+            continue;
+        }
+
+        const key = match[1].trim();
+        const inlineValue = match[2];
+        if (inlineValue.trim()) {
+            entries.push({ key, value: parseInlineFrontmatterValue(inlineValue) });
+            continue;
+        }
+
+        const blockLines = [];
+        while (index + 1 < lines.length) {
+            const nextLine = lines[index + 1];
+            if (nextLine && !/^\s/.test(nextLine)) {
+                break;
+            }
+            index += 1;
+            blockLines.push(nextLine);
+        }
+        entries.push({ key, value: parseBlockFrontmatterValue(blockLines) });
+    }
+    return entries;
+}
+
+function parseInlineFrontmatterValue(value) {
+    const trimmed = String(value ?? "").trim();
+    const listMatch = trimmed.match(/^\[(.*)\]$/);
+    if (listMatch) {
+        return listMatch[1]
+            .split(",")
+            .map((item) => unquoteFrontmatterValue(item))
+            .filter(Boolean);
+    }
+    return unquoteFrontmatterValue(trimmed);
+}
+
+function parseBlockFrontmatterValue(lines) {
+    const cleaned = lines
+        .map((line) => String(line ?? "").replace(/^\s+/, ""))
+        .filter((line, index, allLines) => line || allLines.some((candidate) => candidate));
+    if (!cleaned.length) {
+        return "";
+    }
+
+    const listItems = cleaned
+        .filter(Boolean)
+        .map((line) => line.match(/^-\s+(.+)$/)?.[1] ?? null);
+    if (listItems.every((item) => item !== null)) {
+        return listItems.map((item) => unquoteFrontmatterValue(item)).filter(Boolean);
+    }
+
+    return cleaned.join("\n").trim();
+}
+
+function unquoteFrontmatterValue(value) {
+    const trimmed = String(value ?? "").trim();
+    if (!trimmed) {
+        return "";
+    }
+
+    if ((trimmed.startsWith("\"") && trimmed.endsWith("\"")) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+        return trimmed.slice(1, -1);
+    }
+
+    return trimmed;
+}
+
+function normalizeFrontmatterFieldValue(value) {
+    if (Array.isArray(value)) {
+        return value.map((item) => String(item)).filter(Boolean);
+    }
+    if (typeof value === "string") {
+        return value;
+    }
+    if (value === null || value === undefined) {
+        return "";
+    }
+    return String(value);
+}
+
+function formatFrontmatterFieldLabel(key) {
+    return String(key ?? "")
+        .replace(/[_-]+/g, " ")
+        .replace(/([a-z\d])([A-Z])/g, "$1 $2")
+        .replace(/\s+/g, " ")
+        .trim()
+        .replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
 function extractTitle(content, filePath) {
@@ -623,6 +820,7 @@ async function buildIndex(repo) {
                     title,
                     layers: frontmatter.layers ?? [],
                     tags: frontmatter.tags ?? [],
+                    frontmatter: frontmatter.fields ?? [],
                     size: stat.size,
                     modified: stat.mtime.toISOString(),
                     content,
@@ -1130,7 +1328,8 @@ function renderHtml(appState, initialView = {}) {
     body.presenting .nav-rail,
     body.presenting .tag-rail,
     body.presenting .toolbar,
-    body.presenting #doc-tags {
+    body.presenting #doc-tags,
+    body.presenting #doc-frontmatter {
       display: none;
     }
 
@@ -1153,7 +1352,8 @@ function renderHtml(appState, initialView = {}) {
     }
 
     body.presenting .markdown {
-      max-width: 1100px;
+      width: 90%;
+      max-width: none;
       margin: 0 auto;
     }
 
@@ -1246,6 +1446,12 @@ function renderHtml(appState, initialView = {}) {
       border-bottom: 1px solid var(--theme-border-muted);
     }
 
+    .nav-rail-actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
     .nav-rail-title,
     .tag-rail-title {
       margin: 0;
@@ -1258,6 +1464,7 @@ function renderHtml(appState, initialView = {}) {
     }
 
     .nav-pin,
+    .nav-preview-toggle,
     .tag-pin {
       display: inline-flex;
       align-items: center;
@@ -1273,6 +1480,7 @@ function renderHtml(appState, initialView = {}) {
     }
 
     .nav-pin svg,
+    .nav-preview-toggle svg,
     .tag-pin svg {
       width: 14px;
       height: 14px;
@@ -1280,6 +1488,8 @@ function renderHtml(appState, initialView = {}) {
 
     .nav-pin:hover,
     .nav-pin.is-active,
+    .nav-preview-toggle:hover,
+    .nav-preview-toggle.is-active,
     .tag-pin:hover,
     .tag-pin.is-active {
       color: var(--theme-active-border);
@@ -1459,6 +1669,20 @@ function renderHtml(appState, initialView = {}) {
       line-height: 16px;
     }
 
+    .release-info {
+      flex: 0 0 auto;
+      padding: 8px 10px;
+      border-top: 1px solid var(--theme-border-muted);
+      color: var(--theme-chrome-muted-text);
+      font-size: 12px;
+      line-height: 16px;
+    }
+
+    .release-info a {
+      color: var(--theme-link);
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+
     .tag-scope-toggle {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -1504,7 +1728,8 @@ function renderHtml(appState, initialView = {}) {
     }
 
     .tag-button:hover,
-    .tag-button:focus {
+    .tag-button:focus,
+    .tag-button.is-active {
       background: var(--theme-active-bg);
     }
 
@@ -1550,9 +1775,45 @@ function renderHtml(appState, initialView = {}) {
     }
 
     .result-title {
-      display: block;
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
       font-weight: var(--font-weight-semibold, 600);
       margin-bottom: 2px;
+    }
+
+    .result-title-text {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .document-type-pill {
+      flex: 0 0 auto;
+      padding: 1px 5px;
+      border: 1px solid color-mix(in srgb, var(--theme-border) 80%, transparent);
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--theme-surface) 80%, transparent);
+      color: var(--theme-chrome-muted-text);
+      font-size: 10px;
+      font-weight: var(--font-weight-semibold, 600);
+      letter-spacing: 0.02em;
+      line-height: 14px;
+    }
+
+    .results[data-preview-mode="title-only"] .result {
+      padding-top: 7px;
+      padding-bottom: 7px;
+    }
+
+    .results[data-preview-mode="title-only"] .result-title {
+      margin-bottom: 0;
+    }
+
+    .results[data-preview-mode="title-only"] .result-path,
+    .results[data-preview-mode="title-only"] .snippet {
+      display: none;
     }
 
     .results .result-path {
@@ -1609,7 +1870,9 @@ function renderHtml(appState, initialView = {}) {
     }
 
     .markdown {
-      max-width: 900px;
+      width: 90%;
+      max-width: none;
+      margin: 0 auto;
     }
 
     .markdown h1,
@@ -1688,18 +1951,60 @@ function renderHtml(appState, initialView = {}) {
     }
 
     .markdown .table-wrapper {
+      width: 100%;
       max-width: 100%;
-      overflow: visible;
+      box-sizing: border-box;
       border: 1px solid var(--theme-border);
       border-radius: 8px;
       background: var(--theme-surface);
     }
 
-    .markdown table {
+    .markdown .table-actions {
+      display: flex;
+      justify-content: flex-end;
+      padding: 6px 6px 0;
+    }
+
+    .markdown .table-scroll {
       width: 100%;
-      table-layout: fixed;
+      max-width: 100%;
+      overflow-x: auto;
+      overflow-y: hidden;
+    }
+
+    .markdown table {
+      width: auto;
+      min-width: 100%;
+      table-layout: auto;
       border-collapse: collapse;
       font-size: 13px;
+    }
+
+    .markdown .table-copy-button {
+      display: inline-grid;
+      width: 28px;
+      height: 28px;
+      padding: 5px;
+      place-items: center;
+      border: 1px solid var(--theme-border);
+      border-radius: 5px;
+      background: var(--theme-surface);
+      color: var(--theme-text);
+      cursor: pointer;
+    }
+
+    .markdown .table-copy-button:hover {
+      background: var(--theme-button-bg);
+    }
+
+    .markdown .table-copy-button:focus-visible {
+      outline: 2px solid var(--theme-active-border);
+      outline-offset: 2px;
+    }
+
+    .markdown .table-copy-button svg {
+      width: 16px;
+      height: 16px;
     }
 
     .markdown th,
@@ -1895,6 +2200,32 @@ function renderHtml(appState, initialView = {}) {
       font-size: 12px;
     }
 
+    .frontmatter-list {
+      display: grid;
+      grid-template-columns: max-content minmax(0, 1fr);
+      gap: 4px 10px;
+      margin: 10px 0 0;
+      padding: 0;
+    }
+
+    .frontmatter-list[hidden] {
+      display: none;
+    }
+
+    .frontmatter-list dt,
+    .frontmatter-list dd {
+      margin: 0;
+    }
+
+    .frontmatter-list dt {
+      color: var(--theme-chrome-muted-text);
+      font-weight: var(--font-weight-semibold, 600);
+    }
+
+    .frontmatter-list dd time {
+      color: inherit;
+    }
+
     @media (max-width: 760px) {
       main {
         display: block;
@@ -1952,6 +2283,11 @@ function renderHtml(appState, initialView = {}) {
       .document {
         max-height: none;
       }
+
+      .markdown,
+      body.presenting .markdown {
+        width: 100%;
+      }
     }
   </style>
 </head>
@@ -1993,11 +2329,18 @@ function renderHtml(appState, initialView = {}) {
       <div class="nav-rail-inner">
         <div class="nav-rail-header">
           <h2 class="nav-rail-title">Documents</h2>
-          <button id="nav-pin" class="nav-pin is-active" type="button" aria-label="Unpin navigation sidebar" aria-pressed="true" title="Unpin navigation sidebar">
-            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-              <path d="M5.4 1.5h5.2v1.7L9.7 5.5v2.8l1.8 1v1.2H8.6v4H7.4v-4H4.5V9.3l1.8-1V5.5L5.4 3.2V1.5Z" fill="currentColor"></path>
-            </svg>
-          </button>
+          <div class="nav-rail-actions">
+            <button id="nav-preview-toggle" class="nav-preview-toggle" type="button" aria-label="Show title-only navigation results" aria-pressed="false" title="Show title-only navigation results">
+              <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                <path d="M2 3.5h12v1H2v-1Zm0 4h12v1H2v-1Zm0 4h12v1H2v-1Z" fill="currentColor"></path>
+              </svg>
+            </button>
+            <button id="nav-pin" class="nav-pin is-active" type="button" aria-label="Unpin navigation sidebar" aria-pressed="true" title="Unpin navigation sidebar">
+              <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                <path d="M5.4 1.5h5.2v1.7L9.7 5.5v2.8l1.8 1v1.2H8.6v4H7.4v-4H4.5V9.3l1.8-1V5.5L5.4 3.2V1.5Z" fill="currentColor"></path>
+              </svg>
+            </button>
+          </div>
         </div>
         <section id="results" class="results" aria-label="Search results"></section>
         <button id="nav-resize-handle" class="nav-resize-handle" type="button" aria-label="Resize document navigation sidebar" title="Drag to resize document navigation sidebar"></button>
@@ -2008,6 +2351,7 @@ function renderHtml(appState, initialView = {}) {
         <div>
           <h2 id="doc-title">Select a document</h2>
           <div id="doc-path" class="meta"></div>
+          <dl id="doc-frontmatter" class="meta frontmatter-list" hidden></dl>
         </div>
       </div>
       <div id="doc-tags"></div>
@@ -2037,6 +2381,7 @@ function renderHtml(appState, initialView = {}) {
           <button class="tag-scope-button is-active" type="button" data-tag-scope="all" aria-pressed="true">All documents</button>
         </div>
         <section id="tag-list" class="tag-list" aria-label="Available tags"></section>
+        ${releaseFooterHtml(releaseInfo())}
       </div>
     </aside>
   </main>
@@ -2044,6 +2389,7 @@ function renderHtml(appState, initialView = {}) {
     const searchInput = document.getElementById("search");
     const refreshButton = document.getElementById("refresh");
     const navRail = document.getElementById("nav-rail");
+    const navPreviewToggle = document.getElementById("nav-preview-toggle");
     const navPin = document.getElementById("nav-pin");
     const navFlyoutTrigger = document.getElementById("nav-flyout-trigger");
     const navResizeHandle = document.getElementById("nav-resize-handle");
@@ -2058,6 +2404,7 @@ function renderHtml(appState, initialView = {}) {
     const statusElement = document.getElementById("status");
     const docTitle = document.getElementById("doc-title");
     const docPath = document.getElementById("doc-path");
+    const docFrontmatter = document.getElementById("doc-frontmatter");
     const docTags = document.getElementById("doc-tags");
     const docContent = document.getElementById("doc-content");
     const documentPanel = document.querySelector(".document");
@@ -2091,6 +2438,7 @@ function renderHtml(appState, initialView = {}) {
     let headingSlugCounts = new Map();
     const themeStorageKey = "kpe-doc-dashboard-theme";
     const navPinnedStorageKey = "content-viewer-nav-pinned";
+    const navPreviewTitleOnlyStorageKey = "content-viewer-nav-title-only";
     const navWidthStorageKey = "content-viewer-nav-width";
     const tagPinnedStorageKey = "content-viewer-tag-pinned";
     const searchSessionStorageKey = "content-viewer-search";
@@ -2172,17 +2520,20 @@ function renderHtml(appState, initialView = {}) {
 
     function parseSearchQuery(query) {
       const tagFilters = [];
-      let text = String(query ?? "").replace(/tag:\\s*(?:"([^"]+)"|'([^']+)'|([^\\s]+))/gi, (match, doubleQuoted, singleQuoted, bare) => {
-        const tag = cleanTag(doubleQuoted ?? singleQuoted ?? bare);
-        if (tag) {
-          tagFilters.push(normalizeTag(tag));
+      const layerFilters = [];
+      let text = String(query ?? "").replace(/\\b(tag|layer):\\s*(?:"([^"]+)"|'([^']+)'|([^\\s]+))/gi, (match, facet, doubleQuoted, singleQuoted, bare) => {
+        const value = cleanTag(doubleQuoted ?? singleQuoted ?? bare);
+        if (value && facet.toLowerCase() === "layer") {
+          layerFilters.push(normalizeTag(value));
+        } else if (value) {
+          tagFilters.push(normalizeTag(value));
         }
 
         return " ";
       });
 
-      text = text.replace(/\\btag:\\s*$/i, " ");
-      return { tokens: parseTextTerms(text), tagFilters };
+      text = text.replace(/\\b(?:tag|layer):\\s*$/i, " ");
+      return { tokens: parseTextTerms(text), tagFilters, layerFilters };
     }
 
     function facetFilterToken(item) {
@@ -2212,6 +2563,46 @@ function renderHtml(appState, initialView = {}) {
       const parts = String(value).split("/").filter(Boolean);
       const directoryParts = parts.slice(0, -1);
       return directoryParts.length ? directoryParts.join("/") : "Repository root";
+    }
+
+    function documentTypePill(format) {
+      if (format === "csv") {
+        return '<span class="document-type-pill" aria-label="CSV document">(csv)</span>';
+      }
+      return '<span class="document-type-pill" aria-label="Markdown document">(md)</span>';
+    }
+
+    function isUtcDateTimeValue(value) {
+      const text = String(value ?? "").trim();
+      if (!text || !(/[zZ]$|[+-]\\d{2}:?\\d{2}$/.test(text))) {
+        return false;
+      }
+      return Number.isFinite(Date.parse(text));
+    }
+
+    function frontmatterFieldValueHtml(value) {
+      if (Array.isArray(value)) {
+        return value.map((item) => frontmatterFieldValueHtml(item)).join(", ");
+      }
+      if (isUtcDateTimeValue(value)) {
+        const datetime = String(value).trim();
+        return '<time datetime="' + escapeHtml(datetime) + '">' + escapeHtml(new Date(datetime).toLocaleString()) + "</time>";
+      }
+      return escapeHtml(String(value ?? "")).replaceAll("\\n", "<br>");
+    }
+
+    function renderFrontmatterFields(frontmatter) {
+      return (Array.isArray(frontmatter) ? frontmatter : [])
+        .map((field) => '<dt>' + escapeHtml(field.label || field.key || "") + '</dt><dd>' + frontmatterFieldValueHtml(field.value) + "</dd>")
+        .join("");
+    }
+
+    function navigationResultHtml(result) {
+      return (
+        '<span class="result-title"><span class="result-title-text">' + highlightText(result.title) + "</span>" + documentTypePill(result.format) + "</span>" +
+        '<span class="result-path">' + highlightText(displayResultPath(result.path)) + "</span>" +
+        (result.snippet ? '<div class="snippet">' + highlightText(result.snippet) + "</div>" : "")
+      );
     }
 
     function getFacetFieldName() {
@@ -2257,6 +2648,8 @@ function renderHtml(appState, initialView = {}) {
       const isDocumentScope = tagScope === "document";
       const facetLabel = getFacetLabel();
       const tagItems = isDocumentScope ? getCurrentDocumentFacetValues() : allDocumentFacets[getFacetFieldName()];
+      const parsed = parseSearchQuery(searchInput.value);
+      const activeFilters = new Set(tagFacet === "layer" ? parsed.layerFilters : parsed.tagFilters);
       if (isDocumentScope && !currentDocument) {
         tagCount.textContent = "No document selected";
       } else if (isDocumentScope) {
@@ -2275,9 +2668,11 @@ function renderHtml(appState, initialView = {}) {
       }
 
       for (const tag of tagItems) {
+        const isActive = activeFilters.has(normalizeTag(tag.value || tag.label));
         const button = document.createElement("button");
         button.type = "button";
-        button.className = "tag-button";
+        button.className = "tag-button" + (isActive ? " is-active" : "");
+        button.setAttribute("aria-pressed", String(isActive));
         button.innerHTML =
           '<span class="tag-button-label">' + escapeHtml(tag.label || tag.value) + "</span>" +
           (tag.count ? '<span class="tag-button-count">' + escapeHtml(tag.count) + "</span>" : "");
@@ -2288,12 +2683,24 @@ function renderHtml(appState, initialView = {}) {
 
     function addFacetFilter(item) {
       const normalizedValue = normalizeTag(item.value || item.label);
-      const parsed = parseSearchQuery(searchInput.value);
-      const existingFilters = tagFacet === "layer" ? parsed.layerFilters : parsed.tagFilters;
-      if (!existingFilters.includes(normalizedValue)) {
+      const facetLabel = getFacetLabel();
+      let removed = false;
+      let updatedQuery = String(searchInput.value ?? "").replace(/(^|\\s)\\b(tag|layer):\\s*(?:"([^"]+)"|'([^']+)'|([^\\s]+))/gi, (match, leadingWhitespace, facet, doubleQuoted, singleQuoted, bare) => {
+        if (facet.toLowerCase() !== facetLabel) {
+          return match;
+        }
+        const value = cleanTag(doubleQuoted ?? singleQuoted ?? bare);
+        if (normalizeTag(value) !== normalizedValue) {
+          return match;
+        }
+        removed = true;
+        return leadingWhitespace;
+      });
+      if (!removed) {
         const token = facetFilterToken(item);
-        searchInput.value = [searchInput.value.trim(), token].filter(Boolean).join(" ");
+        updatedQuery = [updatedQuery.trim(), token].filter(Boolean).join(" ");
       }
+      searchInput.value = updatedQuery.trim();
 
       search();
     }
@@ -2456,6 +2863,16 @@ function renderHtml(appState, initialView = {}) {
       }
       tagRail.classList.toggle("is-open", isOpen);
       tagFlyoutTrigger.setAttribute("aria-expanded", String(isOpen || tagRail.classList.contains("is-pinned")));
+    }
+
+    function setNavResultPreviewMode(isTitleOnly) {
+      resultsElement.dataset.previewMode = isTitleOnly ? "title-only" : "preview";
+      navPreviewToggle.classList.toggle("is-active", isTitleOnly);
+      navPreviewToggle.setAttribute("aria-pressed", String(isTitleOnly));
+      const label = isTitleOnly ? "Show navigation previews" : "Show title-only navigation results";
+      navPreviewToggle.setAttribute("aria-label", label);
+      navPreviewToggle.title = label;
+      storeFlag(navPreviewTitleOnlyStorageKey, isTitleOnly);
     }
 
     function setNavPinned(isPinned) {
@@ -2865,18 +3282,28 @@ function renderHtml(appState, initialView = {}) {
       }).join("") + "</tr>";
     }
 
+    function tableCopyButton() {
+      return '<button class="table-copy-button" type="button" data-copy-table title="Copy table as CSV" aria-label="Copy table as CSV">' +
+        '<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M5 1.5h7.5v9H11v-7.5H5v-1.5Zm-2 3H9v10H3v-10Zm1.5 1.5v7h3v-7h-3Z" fill="currentColor"></path></svg></button>';
+    }
+
     function renderTable(headerCells, rows, options = {}) {
       const cellCount = options.columnCount ?? headerCells.length;
       const alignments = options.alignments || [];
       const renderCell = options.renderCell || inlineMarkdown;
-      const bodyRows = rows
-        .map((row) => normalizeTableCells(row, cellCount))
+      const normalizedHeaderCells = normalizeTableCells(headerCells, cellCount);
+      const normalizedRows = rows.map((row) => normalizeTableCells(row, cellCount));
+      const bodyRows = normalizedRows
         .map((cells) => renderTableRow(cells, "td", alignments, renderCell))
         .join("");
+      const csvModel = options.csvModel
+        ? ' data-csv-model="' + escapeHtml(JSON.stringify([normalizedHeaderCells, ...normalizedRows])) + '"'
+        : "";
 
-      return '<div class="table-wrapper"><table><thead>' +
-        renderTableRow(normalizeTableCells(headerCells, cellCount), "th", alignments, renderCell) +
-        "</thead><tbody>" + bodyRows + "</tbody></table></div>";
+      return '<div class="table-wrapper"><div class="table-actions">' + tableCopyButton() +
+        '</div><div class="table-scroll"><table' + csvModel + "><thead>" +
+        renderTableRow(normalizedHeaderCells, "th", alignments, renderCell) +
+        "</thead><tbody>" + bodyRows + "</tbody></table></div></div>";
     }
 
     function renderMarkdownTable(headerLine, dividerLine, rowLines) {
@@ -2979,7 +3406,35 @@ function renderHtml(appState, initialView = {}) {
         return '<div class="empty">This CSV has no records.</div>';
       }
       const columnCount = Math.max(records[0].length, ...records.slice(1).map((row) => row.length));
-      return renderTable(records[0], records.slice(1), { columnCount, renderCell: escapeHtml });
+      return renderTable(records[0], records.slice(1), { columnCount, renderCell: escapeHtml, csvModel: true });
+    }
+
+    function escapeCsvField(value) {
+      const text = String(value ?? "");
+      return /[",\\r\\n]/.test(text) ? '"' + text.replaceAll('"', '""') + '"' : text;
+    }
+
+    function tableToCsv(table) {
+      const csvModel = table.getAttribute?.("data-csv-model");
+      if (csvModel !== null && csvModel !== undefined) {
+        let rows;
+        try {
+          rows = JSON.parse(csvModel);
+        } catch (error) {
+          throw new Error("Table CSV data is unavailable");
+        }
+        if (!Array.isArray(rows) || !rows.every((row) => Array.isArray(row))) {
+          throw new Error("Table CSV data is unavailable");
+        }
+        return rows
+          .map((row) => row.map((cell) => escapeCsvField(cell)).join(","))
+          .join("\\r\\n");
+      }
+      return Array.from(table.rows)
+        .map((row) => Array.from(row.cells)
+          .map((cell) => escapeCsvField(cell.innerText ?? cell.textContent ?? ""))
+          .join(","))
+        .join("\\r\\n");
     }
 
     function indentWidth(value) {
@@ -3610,10 +4065,7 @@ function renderHtml(appState, initialView = {}) {
           const button = document.createElement("button");
           button.type = "button";
           button.className = "result" + (result.path === activePath ? " active" : "");
-          button.innerHTML =
-            '<span class="result-title">' + highlightText(result.title) + "</span>" +
-            '<span class="result-path">' + highlightText(displayResultPath(result.path)) + "</span>" +
-            (result.snippet ? '<div class="snippet">' + highlightText(result.snippet) + "</div>" : "");
+          button.innerHTML = navigationResultHtml(result);
           button.addEventListener("click", () => openDocument(result.path));
           resultsElement.appendChild(button);
         }
@@ -3633,6 +4085,8 @@ function renderHtml(appState, initialView = {}) {
       document.title = documentPageTitle(path);
       docTitle.textContent = "Loading...";
       docPath.textContent = path;
+      docFrontmatter.innerHTML = "";
+      docFrontmatter.hidden = true;
       docTags.innerHTML = "";
       docContent.className = "markdown empty";
       docContent.textContent = "Loading document...";
@@ -3643,6 +4097,8 @@ function renderHtml(appState, initialView = {}) {
         currentPageIndex = 0;
         docTitle.textContent = doc.title;
         docPath.textContent = doc.path + " · " + new Date(doc.modified).toLocaleString();
+        docFrontmatter.innerHTML = renderFrontmatterFields(doc.frontmatter);
+        docFrontmatter.hidden = !doc.frontmatter.length;
         document.title = documentPageTitle(doc.path);
         docTags.innerHTML = doc.tags.map((tag) => '<span class="pill">' + escapeHtml(tag) + "</span>").join("");
         renderActiveTagList();
@@ -3659,6 +4115,8 @@ function renderHtml(appState, initialView = {}) {
         }
       } catch (error) {
         docTitle.textContent = "Could not load document";
+        docFrontmatter.innerHTML = "";
+        docFrontmatter.hidden = true;
         docContent.textContent = error.message;
       }
     }
@@ -3671,6 +4129,42 @@ function renderHtml(appState, initialView = {}) {
       repoSelect.hidden = repos.length <= 1;
     }
 
+    async function writeClipboardText(text) {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.style.position = "fixed";
+      textarea.style.left = "-9999px";
+      document.body.appendChild(textarea);
+      try {
+        textarea.select();
+        if (!document.execCommand("copy")) {
+          throw new Error("Clipboard copy was denied");
+        }
+      } finally {
+        textarea.remove();
+      }
+    }
+
+    async function copyTableAsCsv(tableWrapper) {
+      const table = tableWrapper?.querySelector("table");
+      if (!table) {
+        statusElement.textContent = "Copy failed. The table is unavailable.";
+        return;
+      }
+
+      try {
+        await writeClipboardText(tableToCsv(table));
+        statusElement.textContent = "Copied table as CSV.";
+      } catch (error) {
+        statusElement.textContent = "Copy failed. Table CSV could not be copied.";
+      }
+    }
+
     async function copyShareLink() {
       if (!activePath) {
         statusElement.textContent = "Open a document before sharing a direct link.";
@@ -3679,18 +4173,7 @@ function renderHtml(appState, initialView = {}) {
 
       const link = documentUrl(activePath);
       try {
-        if (navigator.clipboard?.writeText) {
-          await navigator.clipboard.writeText(link);
-        } else {
-          const textarea = document.createElement("textarea");
-          textarea.value = link;
-          textarea.style.position = "fixed";
-          textarea.style.left = "-9999px";
-          document.body.appendChild(textarea);
-          textarea.select();
-          document.execCommand("copy");
-          textarea.remove();
-        }
+        await writeClipboardText(link);
         statusElement.textContent = "Copied direct document link: " + link;
       } catch (error) {
         statusElement.textContent = "Copy failed. Direct link: " + link;
@@ -3705,18 +4188,7 @@ function renderHtml(appState, initialView = {}) {
       }
 
       try {
-        if (navigator.clipboard?.writeText) {
-          await navigator.clipboard.writeText(link);
-        } else {
-          const textarea = document.createElement("textarea");
-          textarea.value = link;
-          textarea.style.position = "fixed";
-          textarea.style.left = "-9999px";
-          document.body.appendChild(textarea);
-          textarea.select();
-          document.execCommand("copy");
-          textarea.remove();
-        }
+        await writeClipboardText(link);
         statusElement.textContent = "Copied source Git URL: " + link;
       } catch (error) {
         statusElement.textContent = "Copy failed. Source Git URL: " + link;
@@ -3763,6 +4235,9 @@ function renderHtml(appState, initialView = {}) {
     });
     navRail.addEventListener("focusout", handleNavRailBlur);
     navFlyoutTrigger.addEventListener("click", () => setNavRailOpen(true));
+    navPreviewToggle.addEventListener("click", () => {
+      setNavResultPreviewMode(resultsElement.dataset.previewMode !== "title-only");
+    });
     navPin.addEventListener("click", () => {
       setNavPinned(!navRail.classList.contains("is-pinned"));
     });
@@ -3826,17 +4301,27 @@ function renderHtml(appState, initialView = {}) {
     }
     updateHeaderHeight();
 
-    docContent.addEventListener("click", async (event) => {
-      const link = event.target.closest("a[data-doc-link]");
+    async function handleDocumentContentClick(event, container, copyTable, openDocumentHandler) {
+      const copyButton = event.target.closest?.("[data-copy-table]");
+      if (copyButton && container.contains(copyButton)) {
+        event.preventDefault();
+        await copyTable(copyButton.closest(".table-wrapper"));
+        return;
+      }
+      const link = event.target.closest?.("a[data-doc-link]");
       if (!link) {
         return;
       }
       event.preventDefault();
-      await openDocument(link.getAttribute("data-doc-link"));
+      await openDocumentHandler(link.getAttribute("data-doc-link"));
       const hash = link.getAttribute("data-doc-hash");
       if (hash) {
         document.getElementById(hash)?.scrollIntoView({ block: "start" });
       }
+    }
+
+    docContent.addEventListener("click", async (event) => {
+      await handleDocumentContentClick(event, docContent, copyTableAsCsv, openDocument);
     });
 
     themeSelect.addEventListener("change", async () => {
@@ -3909,6 +4394,7 @@ function renderHtml(appState, initialView = {}) {
       populateRepoSelect();
       populateThemeSelect();
       applyNavWidth(getStoredNavWidth());
+      setNavResultPreviewMode(getStoredFlag(navPreviewTitleOnlyStorageKey, false));
       setNavPinned(getStoredFlag(navPinnedStorageKey, true));
       setTagPinned(getStoredFlag(tagPinnedStorageKey, false));
       applyTheme(getInitialTheme());
@@ -4057,6 +4543,7 @@ async function handleRequest(appState, req, res) {
                 title: doc.title,
                 layers: doc.layers,
                 tags: doc.tags,
+                frontmatter: doc.frontmatter,
                 modified: doc.modified,
                 size: doc.size,
                 content: doc.content,
@@ -4100,6 +4587,7 @@ async function startServer(instanceId, repoPath) {
     const repos = repoPath && !pathsEqual(repoPath, CONFIGURED_REPOS[0].path)
         ? [{ ...CONFIGURED_REPOS[0], slug: "content", label: "content", path: repoPath, url: await getGitRemoteUrl(repoPath), baseDir: "" }]
         : CONFIGURED_REPOS;
+    await cleanupStaleManagedClones(repos);
     const state = createAppState(instanceId, repos);
     const server = createServer((req, res) => {
         void handleRequest(state, req, res);
@@ -4120,6 +4608,7 @@ async function startServer(instanceId, repoPath) {
 }
 
 export async function startServerForTest(repos) {
+    await cleanupStaleManagedClones(repos);
     const state = createAppState("test", repos);
     const server = createServer((req, res) => { void handleRequest(state, req, res); });
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -4170,6 +4659,7 @@ async function startStandaloneServer() {
     const host = process.env.HOST ?? "0.0.0.0";
     const port = parsePort(process.env.PORT);
     const refreshIntervalMs = parseRefreshIntervalMs(process.env.CONTENT_VIEWER_REFRESH_INTERVAL_SECONDS);
+    await cleanupStaleManagedClones(CONFIGURED_REPOS);
     const state = createAppState("standalone", CONFIGURED_REPOS);
 
     const server = createServer((req, res) => {

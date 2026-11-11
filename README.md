@@ -4,8 +4,7 @@ Markdown and CSV content viewer for browsing, searching, and presenting document
 
 This repository includes:
 
-- `server.mjs` - standalone Node HTTP server for Docker.
-- `extension.mjs` - Copilot canvas extension source kept for side-panel usage.
+- `server.mjs` - Node HTTP server for the containerized web reader.
 - `theme.css` and `theme.json` - vendored shared theme standard from `mkronvold/themes`.
 - `Dockerfile` and `docker-compose.yml` - first container deployment target.
 
@@ -18,6 +17,7 @@ This repository includes:
 - Local image/SVG asset resolution.
 - Mermaid rendering.
 - Tables, task lists, nested lists, blockquotes, code blocks, admonitions, links, bold, italic, and strikethrough.
+- Reader content uses 90% of the available pane (full width on narrow screens); intrinsic-width Markdown and CSV tables scroll only when needed and can be copied as CSV.
 - Presentation mode with heading or `---` pagination; direct document URLs with `?present=1` reopen in presentation mode.
 - Per-tab search text restoration that reruns the normal search pipeline after a browser reload.
 - Pin/unpin document navigation and tag sidebars with browser-stored flyout behavior and adjustable document navigation width.
@@ -173,16 +173,28 @@ https://kpe-content.dev.e2open.com/
 The repository's deployment and rollback guardrails are in
 [`docs/operations.md`](docs/operations.md). They distinguish the local Compose
 target from the dockerhost NPM/proxy target, define the required pending
-baseline evidence, and protect the persistent content-clone volume.
+baseline evidence, require backups only for writable deployment content-clone
+volumes, and treat read-only cached clone volumes as disposable caches.
 
 `POST /api/refresh` intentionally remains public at the application layer
 behind the existing trusted proxy/network boundary. Proxy authorization and
 rate-limit verification are external operator responsibilities; this
 repository does not configure or verify either control.
 
-No automatic image promotion is authorized until later phases supply the
-required scan, immutable-image, health, and copied-volume rehearsal evidence
-described in the runbook.
+The approved Dockerhost auto-update path is limited to the **development-only
+mutable GHCR `:dev` channel** described in
+[`docs/operations.md`](docs/operations.md). It is not a production promotion
+path and is not installed by this repository. Before enabling it, operators
+must classify the content volume: stateful data requires the copied-volume
+rehearsal, while a fully reproducible read-only Git `clone-cache` does not.
+Both classifications require host-local Docker credential-store setup and the
+user-timer procedure in that runbook.
+
+Images published by `.github/workflows/publish-dev-image.yml` receive the
+pushed commit SHA and repository as `CONTENT_VIEWER_RELEASE_COMMIT` and
+`CONTENT_VIEWER_RELEASE_REPOSITORY` build arguments. When both are valid, the
+bottom of the tag sidebar shows the short release commit linked to that commit
+on GitHub. Local and CI-only builds omit the footer.
 
 ## Docker Compose quick start
 
@@ -322,5 +334,4 @@ Separate containers are not required initially. Split later only if you want a d
 2. Move the browser renderer out of the template string into static files.
 3. Add structured logging and request IDs.
 4. Add optional reverse-proxy auth examples.
-5. Add GHCR publishing workflow.
-6. Add Kubernetes manifests if Docker Compose is no longer enough.
+5. Add Kubernetes manifests if Docker Compose is no longer enough.

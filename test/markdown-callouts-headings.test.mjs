@@ -3,7 +3,6 @@ import { execFile } from "node:child_process";
 import { after, before, test } from "node:test";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 process.env.NODE_ENV = "test";
@@ -161,16 +160,4 @@ test("numbers duplicate heading ids across nested renders in one document", () =
 
     assert.match(html, /<h2 id="summary">/);
     assert.match(html, /<h2 id="summary-1">/);
-});
-
-test("keeps standalone and canvas renderers aligned", async () => {
-    const extensionPath = fileURLToPath(new URL("../extension.mjs", import.meta.url));
-    const serverPath = fileURLToPath(new URL("../server.mjs", import.meta.url));
-    const [serverSource, extensionSource] = await Promise.all([
-        fs.readFile(serverPath, "utf8"),
-        fs.readFile(extensionPath, "utf8"),
-    ]);
-    for (const name of RENDERER_FUNCTIONS) {
-        assert.equal(viewerFunction(extensionSource, name), viewerFunction(serverSource, name), `${name} must match`);
-    }
 });

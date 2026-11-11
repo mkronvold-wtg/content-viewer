@@ -48,6 +48,10 @@ function viewerFunction(viewer, name) {
     assert.fail(`could not find the end of ${name}`);
 }
 
+function escapeRegex(value) {
+    return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function evaluateNavigationUrlFunctions(viewer, href) {
     const source = ["repoPathPrefix", "encodeDocumentPath", "documentUrl", "documentNavigationUrl", "updatePresentationUrl"]
         .map((name) => viewerFunction(viewer, name))
@@ -83,15 +87,10 @@ function resolveDocumentLinkPath(viewer, repos, currentDocPath, destination) {
 
 test("maps source-root document links into BASE_DIR display paths", async () => {
     const serverPath = fileURLToPath(new URL("../server.mjs", import.meta.url));
-    const extensionPath = fileURLToPath(new URL("../extension.mjs", import.meta.url));
-    const [serverSource, extensionSource] = await Promise.all([
-        fs.readFile(serverPath, "utf8"),
-        fs.readFile(extensionPath, "utf8"),
-    ]);
+    const serverSource = await fs.readFile(serverPath, "utf8");
     const viewer = viewerSource(serverSource);
     const repos = [{ slug: "content", baseDir: "docs" }];
 
-    assert.equal(viewer, viewerSource(extensionSource), "standalone and canvas viewer sources must stay in parity");
     assert.equal(resolveDocumentLinkPath(viewer, repos, "guide.md", "/docs/other.md"), "other.md");
     assert.equal(resolveDocumentLinkPath(viewer, repos, "nested/guide.md", "/docs/nested/other.md"), "nested/other.md");
     assert.equal(resolveDocumentLinkPath(viewer, repos, "guide.md", "/outside/other.md"), null);
@@ -114,21 +113,14 @@ after(async () => {
     await fs.rm(testRoot, { recursive: true, force: true });
 });
 
-test("persists presentation and search browser state in mirrored viewer sources", async () => {
+test("persists presentation and search browser state in the web reader", async () => {
     const serverPath = fileURLToPath(new URL("../server.mjs", import.meta.url));
-    const extensionPath = fileURLToPath(new URL("../extension.mjs", import.meta.url));
-    const [serverSource, extensionSource] = await Promise.all([
-        fs.readFile(serverPath, "utf8"),
-        fs.readFile(extensionPath, "utf8"),
-    ]);
+    const serverSource = await fs.readFile(serverPath, "utf8");
     const viewer = viewerSource(serverSource);
 
-    assert.equal(viewer, viewerSource(extensionSource), "standalone and canvas viewer sources must stay in parity");
     const presentRequestContract = /function hasPresentationRequest\(url\) \{\s+return url\.searchParams\.getAll\("present"\)\.length === 1 && url\.searchParams\.get\("present"\) === "1";\s+\}/;
     assert.match(serverSource, presentRequestContract);
-    assert.match(extensionSource, presentRequestContract);
     assert.match(serverSource, /presentMode: hasPresentationRequest\(url\)/);
-    assert.match(extensionSource, /presentMode: hasPresentationRequest\(url\)/);
     assert.match(viewer, /const currentUrl = new URL\(window\.location\.href\)/);
     assert.match(viewer, /currentUrl\.searchParams\.set\("present", "1"\)/);
     assert.match(viewer, /currentUrl\.searchParams\.delete\("present"\)/);
@@ -192,4 +184,245 @@ test("persists presentation and search browser state in mirrored viewer sources"
     } finally {
         await server.close();
     }
+});
+
+test("shows the release commit link at the bottom of the tag sidebar", async () => {
+    const { releaseInfo } = await import("../server.mjs");
+    const commit = "35f9a3ec7dae24cd42eac47897efad4473646413";
+    assert.deepEqual(releaseInfo({ CONTENT_VIEWER_RELEASE_COMMIT: commit, CONTENT_VIEWER_RELEASE_REPOSITORY: "mkronvold-wtg/content-viewer" }), {
+        commit,
+        shortCommit: "35f9a3e",
+        repository: "mkronvold-wtg/content-viewer",
+        url: `https://github.com/mkronvold-wtg/content-viewer/commit/${commit}`,
+    });
+    for (const env of [
+        {},
+        { CONTENT_VIEWER_RELEASE_COMMIT: "35f9a3e", CONTENT_VIEWER_RELEASE_REPOSITORY: "mkronvold-wtg/content-viewer" },
+        { CONTENT_VIEWER_RELEASE_COMMIT: commit, CONTENT_VIEWER_RELEASE_REPOSITORY: "evil.com/x/y" },
+        { CONTENT_VIEWER_RELEASE_COMMIT: commit, CONTENT_VIEWER_RELEASE_REPOSITORY: "owner/\"><script>" },
+        { CONTENT_VIEWER_RELEASE_COMMIT: commit, CONTENT_VIEWER_RELEASE_REPOSITORY: "owner/.." },
+    ]) {
+        assert.equal(releaseInfo(env), null);
+    }
+
+    const server = await startServerForTest([{
+        slug: "content",
+        label: "content",
+        path: activePath,
+        url: remoteUrl,
+        branch: "main",
+        baseDir: "data",
+        order: 0,
+    }]);
+    const previous = {
+        commit: process.env.CONTENT_VIEWER_RELEASE_COMMIT,
+        repository: process.env.CONTENT_VIEWER_RELEASE_REPOSITORY,
+    };
+    try {
+        delete process.env.CONTENT_VIEWER_RELEASE_COMMIT;
+        delete process.env.CONTENT_VIEWER_RELEASE_REPOSITORY;
+        assert.doesNotMatch(await pageHtml(server, ""), /id="release-info"/);
+
+        process.env.CONTENT_VIEWER_RELEASE_COMMIT = commit;
+        process.env.CONTENT_VIEWER_RELEASE_REPOSITORY = "mkronvold-wtg/content-viewer";
+        const html = await pageHtml(server, "");
+        assert.match(html, new RegExp(`<section id="tag-list"[^>]*></section>\\s*<footer id="release-info" class="release-info">Release <a href="https://github\\.com/mkronvold-wtg/content-viewer/commit/${commit}" target="_blank" rel="noopener noreferrer" title="mkronvold-wtg/content-viewer@${commit}">35f9a3e</a></footer>\\s*</div>\\s*</aside>`));
+    } finally {
+        for (const [key, value] of [["CONTENT_VIEWER_RELEASE_COMMIT", previous.commit], ["CONTENT_VIEWER_RELEASE_REPOSITORY", previous.repository]]) {
+            if (value === undefined) {
+                delete process.env[key];
+            } else {
+                process.env[key] = value;
+            }
+        }
+        await server.close();
+    }
+});
+
+function evaluateNavigationPreviewFunctions(viewer, storedValue = null) {
+    const source = ["getStoredFlag", "storeFlag", "setNavResultPreviewMode"]
+        .map((name) => viewerFunction(viewer, name))
+        .join("\n");
+    const values = new Map(storedValue === null ? [] : [["content-viewer-nav-title-only", storedValue]]);
+    const attributes = new Map();
+    const activeClasses = new Set();
+    const navPreviewToggle = {
+        classList: {
+            toggle(name, enabled) {
+                if (enabled) {
+                    activeClasses.add(name);
+                } else {
+                    activeClasses.delete(name);
+                }
+            },
+        },
+        setAttribute(name, value) {
+            attributes.set(name, value);
+        },
+        title: "",
+    };
+    const resultsElement = { dataset: {} };
+    const localStorage = {
+        getItem(key) {
+            return values.has(key) ? values.get(key) : null;
+        },
+        setItem(key, value) {
+            values.set(key, value);
+        },
+    };
+    const functions = Function(
+        "localStorage",
+        "resultsElement",
+        "navPreviewToggle",
+        'const navPreviewTitleOnlyStorageKey = "content-viewer-nav-title-only";\n' + source + "\nreturn { getStoredFlag, setNavResultPreviewMode };",
+    )(localStorage, resultsElement, navPreviewToggle);
+    return { ...functions, values, attributes, activeClasses, navPreviewToggle, resultsElement };
+}
+
+function evaluateFacetFilterFunctions(viewer, { initialSearch = "", initialFacet = "tags" } = {}) {
+    const source = ["cleanTag", "normalizeTag", "parseTextTerms", "parseSearchQuery", "getFacetLabel", "facetFilterToken", "addFacetFilter"]
+        .map((name) => viewerFunction(viewer, name))
+        .join("\n");
+    return Function(
+        "initialSearch",
+        "initialFacet",
+        `${source.replaceAll("\\\\", "\\")}
+        const searchInput = { value: initialSearch };
+        let tagFacet = initialFacet;
+        let searches = 0;
+        function search() {
+            searches += 1;
+        }
+        return {
+            addFacetFilter,
+            parseSearchQuery,
+            getSearchValue: () => searchInput.value,
+            getSearchCount: () => searches,
+            setTagFacet: (value) => { tagFacet = value; },
+        };`,
+    )(initialSearch, initialFacet);
+}
+
+function evaluateNavigationResultRenderer(viewer) {
+    const source = ["escapeHtml", "highlightText", "displayResultPath", "documentTypePill", "navigationResultHtml"]
+        .map((name) => viewerFunction(viewer, name))
+        .join("\n");
+    return Function("highlightTokens", `${source}\nreturn navigationResultHtml;`)([]);
+}
+
+function evaluateFrontmatterRenderer(viewer) {
+    const source = ["escapeHtml", "isUtcDateTimeValue", "frontmatterFieldValueHtml", "renderFrontmatterFields"]
+        .map((name) => viewerFunction(viewer, name))
+        .join("\n");
+    return Function(`${source}\nreturn { isUtcDateTimeValue, renderFrontmatterFields };`)();
+}
+
+test("renders Markdown and CSV type pills in navigation entries", async () => {
+    const serverPath = fileURLToPath(new URL("../server.mjs", import.meta.url));
+    const serverSource = await fs.readFile(serverPath, "utf8");
+    const viewer = viewerSource(serverSource);
+    const renderNavigationResult = evaluateNavigationResultRenderer(viewer);
+
+    const markdown = renderNavigationResult({ title: "Guide", path: "guide.md", format: "markdown", snippet: "" });
+    assert.match(markdown, /<span class="result-title"><span class="result-title-text">Guide<\/span><span class="document-type-pill" aria-label="Markdown document">\(md\)<\/span><\/span>/);
+    assert.match(markdown, /<span class="result-path">Repository root<\/span>/);
+
+    const csv = renderNavigationResult({ title: "Report", path: "reports/report.csv", format: "csv", snippet: "" });
+    assert.match(csv, /<span class="result-title"><span class="result-title-text">Report<\/span><span class="document-type-pill" aria-label="CSV document">\(csv\)<\/span><\/span>/);
+    assert.match(csv, /<span class="result-path">reports<\/span>/);
+
+    assert.match(viewer, /\.document-type-pill \{\s+flex: 0 0 auto;\s+padding: 1px 5px;\s+border: 1px solid color-mix\(in srgb, var\(--theme-border\) 80%, transparent\);/);
+});
+
+test("toggles sidebar facet filters on repeated clicks", async () => {
+    const serverPath = fileURLToPath(new URL("../server.mjs", import.meta.url));
+    const serverSource = await fs.readFile(serverPath, "utf8");
+    const viewer = viewerSource(serverSource);
+    const facets = evaluateFacetFilterFunctions(viewer, { initialSearch: 'guide layer:"Platform Team"', initialFacet: "tags" });
+
+    facets.addFacetFilter({ value: "linux", label: "Linux" });
+    assert.equal(facets.getSearchValue(), 'guide layer:"Platform Team" tag:Linux');
+    assert.equal(facets.getSearchCount(), 1);
+
+    facets.addFacetFilter({ value: "linux", label: "Linux" });
+    assert.equal(facets.getSearchValue(), 'guide layer:"Platform Team"');
+    assert.equal(facets.getSearchCount(), 2);
+
+    facets.setTagFacet("layer");
+    facets.addFacetFilter({ value: "Platform Team", label: "Platform Team" });
+    assert.equal(facets.getSearchValue(), "guide");
+    assert.equal(facets.getSearchCount(), 3);
+
+    assert.deepEqual(facets.parseSearchQuery('guide tag:linux layer:"Platform Team"'), {
+        tokens: ["guide"],
+        tagFilters: ["linux"],
+        layerFilters: ["platform team"],
+    });
+
+    const preservedQuery = evaluateFacetFilterFunctions(viewer, {
+        initialSearch: 'tag:Linux "exact  phrase" layer:"Platform  Team"',
+        initialFacet: "tags",
+    });
+    preservedQuery.addFacetFilter({ value: "linux", label: "Linux" });
+    assert.equal(preservedQuery.getSearchValue(), '"exact  phrase" layer:"Platform  Team"');
+});
+
+test("renders frontmatter metadata fields and localizes UTC timestamps", async () => {
+    const serverPath = fileURLToPath(new URL("../server.mjs", import.meta.url));
+    const serverSource = await fs.readFile(serverPath, "utf8");
+    const viewer = viewerSource(serverSource);
+    const { isUtcDateTimeValue, renderFrontmatterFields } = evaluateFrontmatterRenderer(viewer);
+
+    assert.match(viewer, /<dl id="doc-frontmatter" class="meta frontmatter-list" hidden><\/dl>/);
+    assert.match(viewer, /const docFrontmatter = document\.getElementById\("doc-frontmatter"\);/);
+    assert.match(viewer, /docFrontmatter\.innerHTML = renderFrontmatterFields\(doc\.frontmatter\);/);
+    assert.match(viewer, /docFrontmatter\.hidden = !doc\.frontmatter\.length;/);
+
+    assert.equal(isUtcDateTimeValue("2026-09-22T14:30:00Z"), true);
+    assert.equal(isUtcDateTimeValue("alice"), false);
+
+    const html = renderFrontmatterFields([
+        { label: "Created", value: "2026-09-22T14:30:00Z" },
+        { label: "Created By", value: "alice" },
+        { label: "Aliases", value: ["Quickstart", "Getting Started"] },
+    ]);
+    assert.match(html, /<dt>Created<\/dt><dd><time datetime="2026-09-22T14:30:00Z">/);
+    assert.match(html, new RegExp(escapeRegex(new Date("2026-09-22T14:30:00Z").toLocaleString())));
+    assert.match(html, /<dt>Created By<\/dt><dd>alice<\/dd>/);
+    assert.match(html, /<dt>Aliases<\/dt><dd>Quickstart, Getting Started<\/dd>/);
+});
+
+test("persists the navigation result preview display mode in the web reader", async () => {
+    const serverPath = fileURLToPath(new URL("../server.mjs", import.meta.url));
+    const serverSource = await fs.readFile(serverPath, "utf8");
+    const viewer = viewerSource(serverSource);
+
+    assert.match(viewer, /<button id="nav-preview-toggle" class="nav-preview-toggle" type="button" aria-label="Show title-only navigation results" aria-pressed="false" title="Show title-only navigation results">\s*<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">/);
+    assert.match(viewer, /const navPreviewTitleOnlyStorageKey = "content-viewer-nav-title-only"/);
+    assert.match(viewer, /setNavResultPreviewMode\(getStoredFlag\(navPreviewTitleOnlyStorageKey, false\)\)/);
+    assert.match(viewer, /navPreviewToggle\.addEventListener\("click", \(\) => \{\s+setNavResultPreviewMode\(resultsElement\.dataset\.previewMode !== "title-only"\);/);
+    assert.match(viewer, /\.results\[data-preview-mode="title-only"\] \.result-path,\s+\.results\[data-preview-mode="title-only"\] \.snippet \{\s+display: none;/);
+    assert.match(viewer, /\.results\[data-preview-mode="title-only"\] \.result \{\s+padding-top: 7px;\s+padding-bottom: 7px;/);
+    assert.match(viewer, /\.results\[data-preview-mode="title-only"\] \.result-title \{\s+margin-bottom: 0;/);
+
+    const missing = evaluateNavigationPreviewFunctions(viewer);
+    assert.equal(missing.getStoredFlag("content-viewer-nav-title-only", false), false, "missing preferences default to previews");
+    const corrupt = evaluateNavigationPreviewFunctions(viewer, "unexpected");
+    assert.equal(corrupt.getStoredFlag("content-viewer-nav-title-only", false), false, "corrupt preferences default to previews");
+    const restored = evaluateNavigationPreviewFunctions(viewer, "1");
+    assert.equal(restored.getStoredFlag("content-viewer-nav-title-only", false), true, "title-only preference restores");
+
+    restored.setNavResultPreviewMode(true);
+    assert.equal(restored.resultsElement.dataset.previewMode, "title-only");
+    assert.equal(restored.attributes.get("aria-pressed"), "true");
+    assert.equal(restored.attributes.get("aria-label"), "Show navigation previews");
+    assert.equal(restored.navPreviewToggle.title, "Show navigation previews");
+    assert.equal(restored.activeClasses.has("is-active"), true);
+    assert.equal(restored.values.get("content-viewer-nav-title-only"), "1");
+
+    restored.setNavResultPreviewMode(false);
+    assert.equal(restored.resultsElement.dataset.previewMode, "preview");
+    assert.equal(restored.attributes.get("aria-pressed"), "false");
+    assert.equal(restored.values.get("content-viewer-nav-title-only"), "0");
+    assert.doesNotMatch(viewerFunction(viewer, "setNavResultPreviewMode"), /search\(|activePath|setNavPinned|applyNavWidth/);
 });

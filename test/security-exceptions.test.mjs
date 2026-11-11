@@ -1,12 +1,15 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { readFile } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { readFile, mkdir, rm, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { promisify } from 'node:util';
 import { parseHumanRegister, validateExceptions } from '../scripts/security-exceptions.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const future = '2999-01-01T00:00:00Z';
 const digest = `sha256:${'a'.repeat(64)}`;
+const execFileAsync = promisify(execFile);
 
 function exception(overrides = {}) {
   return {
@@ -71,4 +74,31 @@ test('a broad or divergent exception is rejected', () => {
     { version: 1, exceptions: [exact] },
     [{ ...humanRecord(exact), owner: 'different-owner' }],
   ), /diverge/);
+});
+
+test('filesystem policy accepts the current Trivy repository artifact output only', async () => {
+  const testDirectory = resolve(root, '.t-trivy-policy');
+  const evidencePath = resolve(testDirectory, 'evidence.json');
+  await mkdir(testDirectory, { recursive: true });
+  try {
+    const runPolicy = async (artifactType) => {
+      await writeFile(evidencePath, JSON.stringify({
+        SchemaVersion: 2,
+        ArtifactName: '.',
+        ArtifactType: artifactType,
+        Results: [],
+      }));
+      return execFileAsync(process.execPath, [
+        'scripts/enforce-trivy-policy.mjs',
+        '--scan', 'filesystem',
+        '--input', evidencePath,
+        '--exceptions', 'security/trivy-exceptions.json',
+      ], { cwd: root });
+    };
+
+    await assert.doesNotReject(runPolicy('repository'));
+    await assert.rejects(runPolicy('container_image'), /filesystem evidence has unexpected ArtifactType container_image/);
+  } finally {
+    await rm(testDirectory, { recursive: true, force: true });
+  }
 });

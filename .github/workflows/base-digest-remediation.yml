@@ -31,15 +31,21 @@ jobs:
       queue_clear: ${{ steps.decision.outputs.queue_clear }}
     steps:
       - name: Check out current main
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: main
           persist-credentials: false
       - name: Set up Node
-        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
-          cache: npm
+      - name: Cache npm downloads
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.npm
+          key: npm-downloads-${{ runner.os }}-${{ runner.arch }}-node-26-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            npm-downloads-${{ runner.os }}-${{ runner.arch }}-node-26-
       - name: Resolve the allowlisted same-tag manifest
         id: decision
         env:
@@ -78,7 +84,7 @@ jobs:
       base_sha: ${{ steps.scanned-base.outputs.sha }}
     steps:
       - name: Check out current main with read-only fetch credentials
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: main
           # This scheduled scan re-fetches trusted main below. The workflow-level
@@ -96,10 +102,16 @@ jobs:
           [[ "$scanned_base" == "$origin_main" ]] || { echo "main changed while preparing the scan" >&2; exit 1; }
           echo "sha=$scanned_base" >> "$GITHUB_OUTPUT"
       - name: Set up Node
-        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
-          cache: npm
+      - name: Cache npm downloads
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.npm
+          key: npm-downloads-${{ runner.os }}-${{ runner.arch }}-node-26-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            npm-downloads-${{ runner.os }}-${{ runner.arch }}-node-26-
       - name: Install and verify helper policy
         run: |
           npm ci
@@ -127,8 +139,19 @@ jobs:
           digest="$(docker image inspect --format='{{.Id}}' "$REMEDIATION_IMAGE")"
           [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]] || { echo "Invalid current image digest" >&2; exit 1; }
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - name: Set Trivy cache date
+        id: trivy-cache-date
+        shell: bash
+        run: echo "date=$(date -u +'%Y-%m-%d')" >> "$GITHUB_OUTPUT"
+      - name: Cache Trivy vulnerability database
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ github.workspace }}/.cache/trivy
+          key: trivy-${{ runner.os }}-${{ steps.trivy-cache-date.outputs.date }}
+          restore-keys: |
+            trivy-${{ runner.os }}-
       - name: Scan current final runtime image
-        uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # v0.33.1
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
           image-ref: content-viewer:base-digest-remediation
@@ -137,7 +160,8 @@ jobs:
           output: trivy-current.json
           exit-code: '0'
           ignore-unfixed: 'false'
-          version: v0.65.0
+          version: v0.73.0
+          cache: 'false'
       - name: Enforce current final-image exception policy
         run: >-
           node scripts/enforce-trivy-policy.mjs --scan image --input trivy-current.json
@@ -167,7 +191,7 @@ jobs:
           [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]] || { echo "Invalid candidate image digest" >&2; exit 1; }
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
       - name: Scan candidate final runtime image
-        uses: aquasecurity/trivy-action@b6643a29fecd7f34b3597bc6acb0a98b03d33ff8 # v0.33.1
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
           image-ref: content-viewer:base-digest-remediation
@@ -176,7 +200,8 @@ jobs:
           output: trivy-candidate.json
           exit-code: '0'
           ignore-unfixed: 'false'
-          version: v0.65.0
+          version: v0.73.0
+          cache: 'false'
       - name: Enforce candidate final-image exception policy
         run: >-
           node scripts/enforce-trivy-policy.mjs --scan image --input trivy-candidate.json
@@ -196,7 +221,7 @@ jobs:
             >> "$GITHUB_OUTPUT"
       - name: Upload registry and scan evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: base-digest-remediation-evidence-${{ github.run_id }}
           path: |
@@ -221,7 +246,7 @@ jobs:
       issues: write
     steps:
       - name: Check out current main with write credentials
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: main
           persist-credentials: true
@@ -243,10 +268,16 @@ jobs:
           git switch --detach "$SCANNED_BASE_SHA"
           [[ "$(git rev-parse HEAD)" == "$SCANNED_BASE_SHA" ]] || { echo "Could not restore the scanned base" >&2; exit 1; }
       - name: Set up Node
-        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
-          cache: npm
+      - name: Cache npm downloads
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.npm
+          key: npm-downloads-${{ runner.os }}-${{ runner.arch }}-node-26-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            npm-downloads-${{ runner.os }}-${{ runner.arch }}-node-26-
       - name: Reserve a unique remediation branch
         id: branch
         shell: bash

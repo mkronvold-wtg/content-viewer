@@ -1,15 +1,15 @@
-FROM node:26-bookworm-slim@sha256:cd565714d4da3e84bfd341e31448f81d47c6362198f152345297c9c1154e6341 AS dependencies
+FROM node:26-alpine3.23@sha256:c3c6e314fd42e41962360b2482fc18d150beb47976c3aa7b8b9689d7ef42a5c2 AS dependencies
 
 WORKDIR /app
 
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 
-FROM node:26-bookworm-slim@sha256:cd565714d4da3e84bfd341e31448f81d47c6362198f152345297c9c1154e6341 AS runtime
+FROM node:26-alpine3.23@sha256:c3c6e314fd42e41962360b2482fc18d150beb47976c3aa7b8b9689d7ef42a5c2 AS runtime
 
-RUN apt-get update \
-    && apt-get install --no-install-recommends -y git ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache git ca-certificates \
+    && rm -rf /usr/local/lib/node_modules/npm \
+    && rm -f /usr/local/bin/npm /usr/local/bin/npx
 
 WORKDIR /app
 
@@ -23,6 +23,11 @@ ENV NODE_ENV=production \
 
 RUN mkdir -p /app/content && chown node:node /app/content
 USER node
+
+ARG CONTENT_VIEWER_RELEASE_COMMIT=""
+ARG CONTENT_VIEWER_RELEASE_REPOSITORY=""
+ENV CONTENT_VIEWER_RELEASE_COMMIT=${CONTENT_VIEWER_RELEASE_COMMIT} \
+    CONTENT_VIEWER_RELEASE_REPOSITORY=${CONTENT_VIEWER_RELEASE_REPOSITORY}
 
 EXPOSE 8080
 

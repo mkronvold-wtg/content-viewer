@@ -24,6 +24,32 @@ evidence.
    when remediation is complete. Expiry blocks the scan; renewal must be a new,
    documented approval before expiry.
 
+## Manual bundled-dependency risk acceptance (not a Trivy exception)
+
+This time-limited approval records a manually verified vulnerable copy embedded
+inside a published dependency bundle. It is not a Trivy exception, does not
+alter scanner configuration or CI policy, and does not apply to any future
+scanner finding.
+
+- **Advisories:** [GHSA-cg2g-xh64-v4q7](https://github.com/advisories/GHSA-cg2g-xh64-v4q7)
+  and [GHSA-mrv2-3pqr-j5jr](https://github.com/advisories/GHSA-mrv2-3pqr-j5jr)
+- **Affected artifact:** Mermaid 12.2.0's
+  `dist/chunks/mermaid.esm.min/chunk-FWWDAFD2.mjs`, which embeds DOMPurify
+  3.4.12.
+- **Owner and renewal authority:** `mkronvold-wtg`; any renewal requires new,
+  explicit approval before expiry. There is no automatic renewal.
+- **At expiry:** This approval ends. Replace Mermaid with a bundle embedding
+  patched DOMPurify and remove this record, or obtain fresh explicit approval
+  before expiry.
+- **Approval evidence:** Explicit user approval in coordinator session
+  `8e0e7987-6bc7-4e91-bf38-5748de9b156f` at `2026-10-30T16:11:52Z`.
+- **Approved at:** `2026-10-30T16:11:52Z`.
+- **Expires at:** `2026-11-29T16:11:52Z`.
+- **Compensating controls and limitations:** Keep Mermaid's
+  `securityLevel: "strict"` and all existing application sanitization
+  unchanged. These controls reduce exposure; they do not prove exploitation is
+  impossible or remove the underlying vulnerability.
+
 A CI-built image has no registry manifest because this repository does not
 publish images. For image exceptions, `Image digest` is the immutable
 `docker image inspect .Id` content digest captured by the workflow, not a

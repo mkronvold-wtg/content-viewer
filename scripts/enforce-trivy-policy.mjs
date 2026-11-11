@@ -22,7 +22,7 @@ function findingsFromEvidence(evidence, scanner) {
   if (typeof evidence.SchemaVersion !== 'number' && typeof evidence.SchemaVersion !== 'string') fail('JSON evidence is missing SchemaVersion');
   if (typeof evidence.ArtifactName !== 'string' || evidence.ArtifactName.trim() === '') fail('JSON evidence is missing ArtifactName');
   if (typeof evidence.ArtifactType !== 'string' || evidence.ArtifactType.trim() === '') fail('JSON evidence is missing ArtifactType');
-  if (scanner === 'filesystem' && evidence.ArtifactType !== 'filesystem') fail(`filesystem evidence has unexpected ArtifactType ${evidence.ArtifactType}`);
+  if (scanner === 'filesystem' && !['filesystem', 'repository'].includes(evidence.ArtifactType)) fail(`filesystem evidence has unexpected ArtifactType ${evidence.ArtifactType}`);
   if (scanner === 'image' && evidence.ArtifactType !== 'container_image') fail(`image evidence has unexpected ArtifactType ${evidence.ArtifactType}`);
   if (!Array.isArray(evidence.Results)) fail('JSON evidence Results must be an array');
   const findings = [];

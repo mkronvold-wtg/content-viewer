@@ -29,6 +29,38 @@ async function writeGuide(content) {
     await git(["push", "origin", "main"], seedPath);
 }
 
+async function createRemoteFixture(root, slug, content, activeRoot = path.join(root, "clones")) {
+    const remotePath = path.join(root, `${slug}.git`);
+    const seedPath = path.join(root, `${slug}-seed`);
+    const activePath = path.join(activeRoot, slug);
+    const remoteUrl = pathToFileURL(remotePath).href;
+    await git(["init", "--bare", remotePath]);
+    await git(["clone", remoteUrl, seedPath]);
+    await git(["checkout", "-b", "main"], seedPath);
+    await fs.mkdir(path.join(seedPath, "data"), { recursive: true });
+    await fs.writeFile(path.join(seedPath, "data", "guide.md"), content);
+    await git(["add", "data/guide.md"], seedPath);
+    await git(["-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-m", `Create ${slug}`], seedPath);
+    await git(["push", "origin", "main"], seedPath);
+    return {
+        slug,
+        label: slug,
+        path: activePath,
+        url: remoteUrl,
+        branch: "main",
+        baseDir: "data",
+        order: 0,
+    };
+}
+
+async function directoryExists(targetPath) {
+    try {
+        return (await fs.stat(targetPath)).isDirectory();
+    } catch {
+        return false;
+    }
+}
+
 async function api(server, pathname, options) {
     const response = await fetch(`${server.url}${pathname}`, options);
     return { response, body: await response.json() };
@@ -150,4 +182,34 @@ test("runtime Git and viewer service contracts", async () => {
         }),
         /Repository URL must use HTTPS on an allowed host/,
     );
+});
+
+test("reconfiguring managed repos removes stale clones", async () => {
+    const cleanupRoot = path.join(testRoot, "cleanup");
+    const managedRoot = path.join(process.cwd(), "content");
+    const alpha = await createRemoteFixture(cleanupRoot, "alpha", "# Alpha\n\nKeep me\n", managedRoot);
+    const bravo = await createRemoteFixture(cleanupRoot, "bravo", "# Bravo\n\nRemove me\n", managedRoot);
+    const first = await startServerForTest([alpha, { ...bravo, order: 1 }]);
+    try {
+        assert.equal((await api(first, "/api/search?repo=alpha")).response.status, 200);
+        assert.equal((await api(first, "/api/search?repo=bravo")).response.status, 200);
+    } finally {
+        await first.close();
+    }
+
+    assert.equal(await directoryExists(alpha.path), true);
+    assert.equal(await directoryExists(bravo.path), true);
+
+    const second = await startServerForTest([alpha]);
+    try {
+        assert.equal(await directoryExists(alpha.path), true);
+        assert.equal(await directoryExists(bravo.path), false);
+        const alphaSearch = await api(second, "/api/search?repo=alpha&q=keep");
+        assert.equal(alphaSearch.response.status, 200);
+        assert.equal(alphaSearch.body.results[0].title, "Alpha");
+    } finally {
+        await second.close();
+        await fs.rm(alpha.path, { recursive: true, force: true });
+        await fs.rm(bravo.path, { recursive: true, force: true });
+    }
 });

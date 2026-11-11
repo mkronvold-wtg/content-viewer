@@ -3,7 +3,6 @@ import { execFile } from "node:child_process";
 import { after, before, test } from "node:test";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 process.env.NODE_ENV = "test";
@@ -55,34 +54,48 @@ function runtimeViewerSource(html) {
     return source;
 }
 
+async function assertValidClientSyntax(source) {
+    const clientPath = path.join(testRoot, "served-client.mjs");
+    await fs.writeFile(clientPath, source, "utf8");
+    await execFileAsync(process.execPath, ["--check", clientPath], {
+        cwd: testRoot,
+        windowsHide: true,
+    });
+}
+
 function csvRenderer(viewer) {
-    const source = ["escapeHtml", "normalizeTableCells", "renderTableRow", "renderTable", "parseCsv", "renderCsvTable"]
+    const source = ["escapeHtml", "normalizeTableCells", "renderTableRow", "tableCopyButton", "renderTable", "parseCsv", "renderCsvTable"]
         .map((name) => viewerFunction(viewer, name))
         .join("\n");
     return Function(`${source}\nreturn { parseCsv, renderCsvTable };`)();
 }
 
 function markdownTableRenderer(viewer) {
-    const source = ["splitTableRow", "tableAlignments", "normalizeTableCells", "renderTableRow", "renderTable", "renderMarkdownTable"]
+    const source = ["splitTableRow", "tableAlignments", "normalizeTableCells", "renderTableRow", "tableCopyButton", "renderTable", "renderMarkdownTable"]
         .map((name) => viewerFunction(viewer, name))
         .join("\n");
     const inlineMarkdown = (value) => String(value).replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
     return Function("inlineMarkdown", `${source}\nreturn renderMarkdownTable;`)(inlineMarkdown);
 }
 
-function sharedSection(source, startMarker, endMarker) {
-    const start = source.indexOf(startMarker);
-    const end = source.indexOf(endMarker, start);
-    assert.notEqual(start, -1, `missing ${startMarker}`);
-    assert.notEqual(end, -1, `missing ${endMarker}`);
-    return source.slice(start, end);
-}
-
 before(async () => {
     await fs.rm(testRoot, { recursive: true, force: true });
     await fs.mkdir(path.join(repositoryPath, "docs"), { recursive: true });
     await fs.mkdir(path.join(repositoryPath, "outside"), { recursive: true });
-    await fs.writeFile(path.join(repositoryPath, "docs", "guide.md"), "# Guide\n\nMarkdown-only needle\n");
+    await fs.writeFile(path.join(repositoryPath, "docs", "guide.md"), `---
+title: Guide
+tags: linux, performance, bash
+Created: 2026-09-22T14:30:00Z
+CreatedBy: alice
+LastEdit: bob
+Aliases:
+  - Quickstart
+  - Getting Started
+---
+# Guide
+
+Markdown-only needle
+`);
     await fs.writeFile(path.join(repositoryPath, "docs", "report.csv"), csvContent);
     await fs.writeFile(path.join(repositoryPath, "outside", "hidden.csv"), "Name,Secret\nHidden,outside-root\n");
     await fs.writeFile(path.join(repositoryPath, "docs", "ignored.txt"), "not indexed\n");
@@ -103,6 +116,18 @@ test("indexes CSV raw cell text and returns document format metadata", async () 
             allDocuments.body.results.map((result) => [result.path, result.format]).sort((left, right) => left[0].localeCompare(right[0])),
             [["guide.md", "markdown"], ["report.csv", "csv"]],
         );
+        assert.deepEqual(
+            allDocuments.body.tags,
+            [
+                { value: "bash", label: "bash", count: 1 },
+                { value: "linux", label: "linux", count: 1 },
+                { value: "performance", label: "performance", count: 1 },
+            ],
+        );
+        assert.deepEqual(
+            allDocuments.body.results.find((result) => result.path === "guide.md")?.tags,
+            ["linux", "performance", "bash"],
+        );
 
         const csvSearch = await api(server, "/api/search?repo=content&q=embedded");
         assert.equal(csvSearch.response.status, 200);
@@ -120,6 +145,13 @@ test("indexes CSV raw cell text and returns document format metadata", async () 
         assert.equal(markdownDocument.response.status, 200);
         assert.equal(markdownDocument.body.format, "markdown");
         assert.equal(markdownDocument.body.title, "Guide");
+        assert.deepEqual(markdownDocument.body.tags, ["linux", "performance", "bash"]);
+        assert.deepEqual(markdownDocument.body.frontmatter, [
+            { key: "Created", label: "Created", value: "2026-09-22T14:30:00Z" },
+            { key: "CreatedBy", label: "Created By", value: "alice" },
+            { key: "LastEdit", label: "Last Edit", value: "bob" },
+            { key: "Aliases", label: "Aliases", value: ["Quickstart", "Getting Started"] },
+        ]);
     } finally {
         await server.close();
     }
@@ -137,6 +169,25 @@ test("keeps CSV direct routes and source identity within BASE_DIR", async () => 
         assert.equal(sourcePathRequest.response.status, 404);
         const traversal = await fetch(`${server.url}/content/%2E%2E%2Foutside%2Fhidden.csv`);
         assert.equal(traversal.status, 404);
+    } finally {
+        await server.close();
+    }
+});
+
+test("serves a syntax-valid initializing client for direct CSV routes", async () => {
+    const server = await startServerForTest([repository()]);
+    try {
+        const directRoute = await fetch(`${server.url}/content/report.csv?present=1`);
+        assert.equal(directRoute.status, 200);
+        const html = await directRoute.text();
+        assert.match(html, /const initialDocPath = "report\.csv";/);
+        const clientSource = runtimeViewerSource(html);
+        assert.match(
+            clientSource,
+            /async function initialize\(\) \{[\s\S]*?await openDocument\(initialDocPath, false, \{ skipHistory: true, presentMode: initialPresentMode \}\);/,
+        );
+        assert.match(clientSource, /initialize\(\);\s*$/);
+        await assertValidClientSyntax(clientSource);
     } finally {
         await server.close();
     }
@@ -160,7 +211,9 @@ test("renders RFC 4180 CSV cells as escaped plain-text tables", async () => {
         assert.deepEqual(parseCsv("A,B\n1,\n"), [["A", "B"], ["1", ""]]);
 
         const html = renderCsvTable(csvContent);
-        assert.match(html, /^<div class="table-wrapper"><table><thead>/);
+        assert.match(html, /^<div class="table-wrapper"><div class="table-actions"><button class="table-copy-button"/);
+        assert.match(html, /data-copy-table title="Copy table as CSV" aria-label="Copy table as CSV"/);
+        assert.match(html, /<div class="table-scroll"><table data-csv-model="[^"]+"><thead>/);
         assert.match(html, /<th>Name<\/th>/);
         assert.match(html, /Hello, &quot;world&quot;/);
         assert.match(html, /embedded\r\nnewline/);
@@ -185,7 +238,8 @@ test("preserves Markdown table rendering through the shared table wrapper", asyn
         const route = await fetch(`${server.url}/content/guide.md`);
         const renderMarkdownTable = markdownTableRenderer(runtimeViewerSource(await route.text()));
         const html = renderMarkdownTable("| Name | Value |\n", "| --- | ---: |\n", ["| **Bold** | 42 | surplus |"]);
-        assert.match(html, /^<div class="table-wrapper"><table><thead>/);
+        assert.match(html, /^<div class="table-wrapper"><div class="table-actions"><button class="table-copy-button"/);
+        assert.match(html, /<div class="table-scroll"><table><thead>/);
         assert.match(html, /<th>Name<\/th>/);
         assert.match(html, /<strong>Bold<\/strong>/);
         assert.match(html, /style="text-align:right">42<\/td>/);
@@ -193,22 +247,4 @@ test("preserves Markdown table rendering through the shared table wrapper", asyn
     } finally {
         await server.close();
     }
-});
-
-test("keeps standalone and canvas CSV implementations aligned", async () => {
-    const serverPath = fileURLToPath(new URL("../server.mjs", import.meta.url));
-    const extensionPath = fileURLToPath(new URL("../extension.mjs", import.meta.url));
-    const [serverSource, extensionSource] = await Promise.all([
-        fs.readFile(serverPath, "utf8"),
-        fs.readFile(extensionPath, "utf8"),
-    ]);
-
-    assert.equal(
-        sharedSection(serverSource, "function documentFormat(filePath) {", "async function ensureIndex(state) {"),
-        sharedSection(extensionSource, "function documentFormat(filePath) {", "async function ensureIndex(state) {"),
-    );
-    assert.equal(
-        sharedSection(serverSource, "function renderTableRow(cells, cellTag, alignments, renderCell) {", "function indentWidth(value) {"),
-        sharedSection(extensionSource, "function renderTableRow(cells, cellTag, alignments, renderCell) {", "function indentWidth(value) {"),
-    );
 });
