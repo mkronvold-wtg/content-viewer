@@ -1207,6 +1207,11 @@ function renderHtml(appState, initialView = {}) {
       color: var(--theme-chrome-muted-text);
     }
 
+    #status a {
+      color: var(--theme-link);
+      overflow-wrap: anywhere;
+    }
+
     h1 {
       margin: 0 0 8px;
       font-size: 18px;
@@ -4434,12 +4439,20 @@ function renderHtml(appState, initialView = {}) {
         return;
       }
 
+      let message;
       try {
         await writeClipboardText(link);
-        statusElement.textContent = "Copied source Git URL: " + link;
+        message = "Copied source Git URL: ";
       } catch (error) {
-        statusElement.textContent = "Copy failed. Source Git URL: " + link;
+        message = "Copy failed. Source Git URL: ";
       }
+
+      const sourceLink = document.createElement("a");
+      sourceLink.href = link;
+      sourceLink.textContent = link;
+      sourceLink.target = "_blank";
+      sourceLink.rel = "noopener noreferrer";
+      statusElement.replaceChildren(message, sourceLink);
     }
 
     function resetDocumentView() {

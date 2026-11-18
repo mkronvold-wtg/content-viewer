@@ -26,7 +26,7 @@ This repository includes:
 - Multiple independent content repos addressed by URL prefix, for example `/kpe.content`.
 - Optional per-repo base directories that enforce each repository's document index root while keeping that prefix out of document display and browser URLs.
 - Direct document links with `repo/filename` page titles and a Share button that copies the current document URL.
-- A Source button that copies the current document's source Git URL.
+- A Source button that copies the current document's source Git URL and displays a link that opens in a new tab.
 - On-demand refresh that runs `git pull --ff-only` and rebuilds the index.
 
 ## Build and theme updates

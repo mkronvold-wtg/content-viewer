@@ -501,3 +501,70 @@ test("sizes the main layout from the measured header height", async () => {
     assert.doesNotMatch(viewer, /height: calc\(100vh - 97px\)/, "a hard-coded header height lets the rails overlap a taller header");
     assert.match(viewer, /setProperty\("--content-viewer-header-height", \(pageHeader \? pageHeader\.getBoundingClientRect\(\)\.height : 0\) \+ "px"\)/);
 });
+
+test("shows the copied source URL as a link even when clipboard access fails", async () => {
+    const serverPath = fileURLToPath(new URL("../server.mjs", import.meta.url));
+    const viewer = viewerSource(await fs.readFile(serverPath, "utf8"));
+    const source = `async ${viewerFunction(viewer, "copySourceUrl")}`;
+    const sourceUrl = "https://github.com/example/content/blob/main/docs/Guide%20%26%20notes.md";
+
+    function sourceAction(currentDocument, writeClipboardText) {
+        const statusElement = {
+            childNodes: [],
+            get textContent() {
+                return this.childNodes.map((node) => typeof node === "string" ? node : node.textContent).join("");
+            },
+            set textContent(value) {
+                this.childNodes = [value];
+            },
+            replaceChildren(...nodes) {
+                this.childNodes = nodes;
+            },
+        };
+        const document = {
+            createElement(tag) {
+                return { tagName: tag.toUpperCase() };
+            },
+        };
+        const copySourceUrl = Function(
+            "currentDocument",
+            "writeClipboardText",
+            "statusElement",
+            "document",
+            `${source}\nreturn copySourceUrl;`,
+        )(currentDocument, writeClipboardText, statusElement, document);
+        return { copySourceUrl, statusElement };
+    }
+
+    for (const copyFails of [false, true]) {
+        const copied = [];
+        const { copySourceUrl, statusElement } = sourceAction({ sourceUrl }, async (text) => {
+            copied.push(text);
+            if (copyFails) throw new Error("Clipboard access denied");
+        });
+
+        await copySourceUrl();
+
+        assert.deepEqual(copied, [sourceUrl]);
+        assert.equal(
+            statusElement.textContent,
+            (copyFails ? "Copy failed. Source Git URL: " : "Copied source Git URL: ") + sourceUrl,
+        );
+        const links = statusElement.childNodes.filter((node) => typeof node !== "string");
+        assert.equal(links.length, 1);
+        assert.equal(links[0].tagName, "A");
+        assert.equal(links[0].textContent, sourceUrl);
+        assert.equal(links[0].href, sourceUrl);
+        assert.equal(links[0].target, "_blank");
+        assert.equal(links[0].rel, "noopener noreferrer");
+    }
+
+    for (const currentDocument of [null, { sourceUrl: "" }]) {
+        const { copySourceUrl, statusElement } = sourceAction(currentDocument, async () => {
+            assert.fail("an unavailable source URL must not be copied");
+        });
+        await copySourceUrl();
+        assert.equal(statusElement.textContent, "The source Git URL is unavailable for this document.");
+        assert.equal(statusElement.childNodes.filter((node) => typeof node !== "string").length, 0);
+    }
+});
