@@ -283,6 +283,68 @@ CONTENT_VIEWER_REPO_TEAM_DOCS_BASE_DIR=/docs/
 
 Repo slugs are reserved for app routes, so do not use `api`, `asset`, `vendor`, or `favicon.ico`.
 
+## Writing content with Obsidian
+
+These desktop setup steps use `kpe-content` as an example. Adapt the
+repository URL and attachment folder to the configured content repository and
+its `BASE_DIR`.
+
+1. Install [Obsidian](https://obsidian.md/) and [Git](https://git-scm.com/).
+   Configure Git authentication with your credential manager or SSH key and
+   ensure your account can access the content repository. Pushing requires
+   write access; follow the repository's branch and review rules.
+2. Clone the **entire** content repository and open its root folder as an
+   existing vault in Obsidian. For example:
+
+   ```sh
+   git clone https://github.com/wtg-e2open/kpe-content.git
+   ```
+
+   Keep the `.git` directory and the `data/` directory in place. Check out
+   the intended branch with its remote tracking branch configured, and pull
+   before editing. The viewer reads the branch configured for that repository.
+3. In **Settings > Files & Links > Default location for new attachments**,
+   select **In the folder specified below**, then enter `data/attachments`.
+   Create that folder if necessary. With the vault at the repository root,
+   this keeps pasted and dropped images inside kpe-content's `BASE_DIR=data`;
+   content-viewer does not serve assets outside that boundary. For another
+   repository, choose an attachment folder inside its configured `BASE_DIR`.
+4. In **Settings > Community plugins**, enable community plugins, browse for
+   **Git** (the [Obsidian Git plugin](https://github.com/Vinzent03/obsidian-git)),
+   install it, and enable it. In its **Identity** settings, configure
+   **Repository author name** and **Repository author email** if Git does not
+   already provide them. Git uses the credentials configured on the computer;
+   do not put tokens in repository files or remote URLs.
+5. In the Git plugin's **Sync** settings, enable **Pull on startup** and
+   **Pull on commit-and-sync**. Enable **Push on commit-and-sync** if direct
+   pushes to the selected branch are permitted. Leave **Merge strategy on
+   conflicts** at **None (Git default)** so conflicts are reviewed rather than
+   automatically choosing one side.
+6. In the plugin's **Automatic** settings, turn off **Use separate commit and
+   push intervals**. For manual, review-first syncing, set **Auto
+   commit-and-sync interval (minutes)** and **Auto pull interval (minutes)**
+   to `0`. If automatic syncing is appropriate for the repository, set the
+   auto commit-and-sync interval to a nonzero value, such as `5` minutes.
+   Automatic commit-and-sync can commit unstaged changes across the repository,
+   so review the plugin's staging settings and use it only where that behavior
+   and direct pushes are allowed.
+
+The attachment setting applies to new files; move existing misplaced assets
+inside `data/` separately and update any path-based links as needed. Avoid
+duplicate attachment filenames. Settings and plugins must be configured on
+each device when the content repository ignores `.obsidian/`, as
+`kpe-content` does.
+
+Use the Git plugin's **Pull** before working and review changes in **Open
+source control view**. When ready, use **Commit-and-sync** to commit, pull,
+and push, or follow the repository's pull-request workflow. Resolve any
+conflicts and retry a failed sync before continuing; do not force-push. After
+the content commit reaches the branch configured in content-viewer, wait for
+its scheduled refresh or use its Refresh button, then open the note and
+confirm the image appears. Obsidian Git's
+[documentation](https://publish.obsidian.md/git-doc) covers authentication
+and conflict resolution.
+
 ## Authentication and access requirements
 
 The first container version intentionally has **no application-level user authentication**. It assumes access is controlled by network placement.
